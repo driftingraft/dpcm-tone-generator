@@ -36,7 +36,8 @@ def calculate_rate_ratios() -> list[float]:
 def get_reachable_notes(
     base_note: str,
     target_notes: list[str],
-    max_cents_error: float = 25.0
+    max_cents_error: float = 25.0,
+    prefer_higher_rate: bool = False
 ) -> list[tuple[str, int, float]]:
     """
     指定した基本ノートから、各レートで到達可能なノートを計算
@@ -49,6 +50,7 @@ def get_reachable_notes(
         base_note: 基本サンプルのノート名 (例: "C3")
         target_notes: カバー対象のノートリスト
         max_cents_error: 許容誤差（セント）
+        prefer_higher_rate: Trueの場合、許容誤差内で最高レートを優先
 
     Returns:
         (到達ノート名, レートインデックス, 誤差セント) のリスト
@@ -83,9 +85,17 @@ def get_reachable_notes(
             else:
                 error_cents = float('inf')
 
-            if abs(error_cents) <= max_cents_error and abs(error_cents) < abs(best_error):
-                best_error = error_cents
-                best_rate_idx = rate_idx
+            if abs(error_cents) <= max_cents_error:
+                if prefer_higher_rate:
+                    # 高レート優先: 許容誤差内で最高レートを選択
+                    if best_rate_idx is None or rate_idx > best_rate_idx:
+                        best_error = error_cents
+                        best_rate_idx = rate_idx
+                else:
+                    # 最小誤差優先（デフォルト）
+                    if abs(error_cents) < abs(best_error):
+                        best_error = error_cents
+                        best_rate_idx = rate_idx
 
         if best_rate_idx is not None:
             reachable.append((target_note, best_rate_idx, best_error))
@@ -96,7 +106,8 @@ def get_reachable_notes(
 def find_minimum_sample_set(
     start_note: str,
     end_note: str,
-    max_cents_error: float = 25.0
+    max_cents_error: float = 25.0,
+    prefer_higher_rate: bool = False
 ) -> tuple[list[str], dict[str, tuple[str, int, float]]]:
     """
     指定音域をカバーする最小限の基本サンプルセットを計算（貪欲法）
@@ -105,6 +116,7 @@ def find_minimum_sample_set(
         start_note: 開始ノート (例: "C2")
         end_note: 終了ノート (例: "F4")
         max_cents_error: 許容誤差（セント）
+        prefer_higher_rate: Trueの場合、許容誤差内で最高レートを優先
 
     Returns:
         (基本サンプルノートのリスト, ノートマッピング辞書)
@@ -129,7 +141,7 @@ def find_minimum_sample_set(
 
         for candidate in candidate_bases:
             # このサンプルでカバーできるノートを計算
-            reachable = get_reachable_notes(candidate, list(uncovered), max_cents_error)
+            reachable = get_reachable_notes(candidate, list(uncovered), max_cents_error, prefer_higher_rate)
 
             if len(reachable) > len(best_coverage):
                 best_base = candidate
@@ -329,7 +341,8 @@ def generate_sunsoft_defines(
 def analyze_coverage(
     start_note: str,
     end_note: str,
-    max_cents_error: float = 25.0
+    max_cents_error: float = 25.0,
+    prefer_higher_rate: bool = False
 ) -> None:
     """
     分析のみ実行（ファイル生成なし）
@@ -337,6 +350,8 @@ def analyze_coverage(
     print(f"\n=== サンソフトベース方式 分析 ===")
     print(f"対象音域: {start_note} 〜 {end_note}")
     print(f"許容誤差: {max_cents_error} cents")
+    if prefer_higher_rate:
+        print(f"品質優先モード: 有効（高レート優先）")
     print()
 
     # 16種類のレートとセント差を表示
@@ -349,7 +364,7 @@ def analyze_coverage(
     # 最小サンプルセットを計算
     try:
         base_samples, note_mapping = find_minimum_sample_set(
-            start_note, end_note, max_cents_error
+            start_note, end_note, max_cents_error, prefer_higher_rate
         )
     except ValueError as e:
         print(f"エラー: {e}")
@@ -430,13 +445,13 @@ def main():
     parser.add_argument('--loop-match', action='store_true',
                        help='ループ時に開始値に戻るよう調整')
     parser.add_argument('--prefer-quality', action='store_true',
-                       help='音質優先モード（高サンプルレート優先）')
+                       help='音質優先モード（高サンプルレート優先、レート選択でも高レートを優先）')
 
     args = parser.parse_args()
 
     # 分析のみモード
     if args.analyze_only:
-        analyze_coverage(args.start, args.end, args.max_error)
+        analyze_coverage(args.start, args.end, args.max_error, args.prefer_quality)
         return
 
     # 波形タイプの決定
@@ -466,7 +481,7 @@ def main():
     # 最小サンプルセットを計算
     try:
         base_sample_notes, note_mapping = find_minimum_sample_set(
-            args.start, args.end, args.max_error
+            args.start, args.end, args.max_error, args.prefer_quality
         )
     except ValueError as e:
         print(f"エラー: {e}")
