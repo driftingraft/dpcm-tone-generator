@@ -8,7 +8,7 @@
 
 - **複数の入力形式に対応**: 基本波形（saw/triangle/sine/square/pulse）、FDS波形、HEX文字列、WAVファイル
 - **fitモード**: dPCMの有効サンプル長（8+128n）にぴったり収まるパラメータを自動探索し、パディングノイズを排除
-- **高品質モード**: サイズより音質を優先したサンプルレート選択
+- **3段階の品質設定**: サイズ優先 / レート下限指定（中間バランス） / 高品質優先から選択可能
 - **音量調整**: 波形の振幅を調整可能
 - **ループ最適化**: 開始値の自動設定、終端値の調整でシームレスなループを実現
 - **バッチ生成**: 全音階（C2〜F4）を一括生成、ppmck用定義ファイルも出力
@@ -21,8 +21,8 @@
 ## インストール
 
 ```bash
-git clone https://github.com/yourusername/nes-dpcm-generator.git
-cd nes-dpcm-generator
+git clone https://github.com/driftingraft/dpcm-tone-generator.git
+cd dpcm-tone-generator
 ```
 
 ## 使い方
@@ -73,7 +73,7 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 | `--wave` | `-w` | 波形タイプ: saw, triangle, sine, square, pulse25, pulse12 |
 | `--note` | `-n` | 音程（例: C3, A4, F#2） |
 | `--freq` | `-f` | 周波数を直接指定（Hz） |
-| `--rate` | `-r` | サンプルレートインデックス（0-15） |
+| `--rate-index` | `-r` | サンプルレートインデックス（0-15）を直接指定 |
 | `--output` | `-o` | 出力ファイル名 |
 | `--fds` | | FDS波形（スペース区切り10進数） |
 | `--fds-file` | | FDS波形ファイル |
@@ -83,7 +83,8 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 | `--cycles` | `-c` | 周期数（デフォルト: 1） |
 | `--volume` | `-v` | 音量係数（デフォルト: 1.0） |
 | `--fit` | | 有効サンプル長に自動フィット |
-| `--quality` | `-q` | 高サンプルレート優先 |
+| `--quality` | `-q` | fitモード時、高サンプルレート優先 |
+| `--min-rate-index` | | fitモード時、サンプルレートの下限を指定（0-15） |
 | `--auto-start` | `-a` | 開始値を波形に合わせる |
 | `--loop-match` | `-l` | 終端値を開始値に戻す |
 | `--show-wave` | | 波形をASCII表示 |
@@ -91,12 +92,12 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 
 ### dpcm_batch.py
 
-上記に加えて：
+`dpcm_generator.py`と同様のオプションに加えて：
 
-| オプション | 説明 |
-|-----------|------|
-| `--output-dir` | 出力ディレクトリ |
-| `--name` | カスタム波形使用時のファイル名プレフィックス |
+| オプション | 短縮形 | 説明 |
+|-----------|--------|------|
+| `--output-dir` | `-o` | 出力ディレクトリ |
+| `--name` | `-n` | カスタム波形使用時のファイル名プレフィックス |
 
 ## 推奨設定
 
@@ -108,11 +109,20 @@ python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto
 
 ### バランス重視（推奨）
 
+`--min-rate-index`でサンプルレートの下限を指定しつつ、サイズを抑える：
+
 ```bash
-python dpcm_generator.py --wave saw --note C3 --fit --cycles 8 --auto-start --output output.dmc
+# レート$8以上で最小サイズを選択
+python dpcm_generator.py --wave saw --note C3 --fit --min-rate-index 8 --auto-start --output output.dmc
 ```
 
-### サイズ最小
+### サイズ優先
+
+```bash
+python dpcm_generator.py --wave saw --note C3 --fit --auto-start --output output.dmc
+```
+
+### サイズ最小（fitなし）
 
 ```bash
 python dpcm_generator.py --wave saw --note C3 --output output.dmc
