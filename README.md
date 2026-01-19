@@ -12,6 +12,7 @@
 - **音量調整**: 波形の振幅を調整可能
 - **ループ最適化**: 開始値の自動設定、終端値の調整でシームレスなループを実現
 - **バッチ生成**: 全音階（C2〜F4）を一括生成、ppmck用定義ファイルも出力
+- **サンソフトベース方式**: 最小限のサンプル数で全音階をカバー、メモリ使用量を大幅削減
 
 ## 動作要件
 
@@ -64,6 +65,25 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 # → ./dpcm_samples/saw_defines.txt
 ```
 
+### サンソフトベース方式
+
+サンソフトベース（Sunsoft Bass）方式は、最小限のサンプル数で全音階をカバーする技術です。1つのサンプルを異なる再生レートで再利用することで、メモリ使用量を大幅に削減できます。
+
+```bash
+# まず分析のみ実行（どのサンプルが必要か確認）
+python dpcm_sunsoft.py --analyze-only --start C2 --end F4
+
+# サンプル生成
+python dpcm_sunsoft.py --wave saw --start C2 --end F4 --fit --auto-start --output-dir ./sunsoft_samples
+
+# 許容誤差を厳しくする（デフォルト25セント）
+python dpcm_sunsoft.py --wave saw --start C2 --end F4 --max-error 15 --fit --output-dir ./sunsoft_samples
+```
+
+生成例（C2〜F4、30音階）：
+- 従来方式: 30サンプル
+- サンソフトベース方式: 4〜5サンプル（約80%削減）
+
 ## オプション一覧
 
 ### dpcm_generator.py
@@ -98,6 +118,27 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 |-----------|--------|------|
 | `--output-dir` | `-o` | 出力ディレクトリ |
 | `--name` | `-n` | カスタム波形使用時のファイル名プレフィックス |
+
+### dpcm_sunsoft.py
+
+| オプション | 短縮形 | 説明 |
+|-----------|--------|------|
+| `--wave` | | 波形タイプ: saw, triangle, sine, square, pulse25, pulse12 |
+| `--fds` | | FDS波形ファイル |
+| `--hex` | | HEX波形データ |
+| `--wav` | | WAVファイル |
+| `--analyze-only` | | 分析のみ実行（サンプル生成なし） |
+| `--start` | | 開始ノート（デフォルト: C2） |
+| `--end` | | 終了ノート（デフォルト: F4） |
+| `--max-error` | | 許容誤差（セント、デフォルト: 25.0） |
+| `--output-dir` | `-o` | 出力ディレクトリ |
+| `--prefix` | | ファイル名プレフィックス（デフォルト: sunsoft_） |
+| `--fit` | | fitモード（dPCM有効サンプル数に合わせる） |
+| `--cycles` | | 周期数（デフォルト: 8） |
+| `--volume` | | 音量（0.0-1.0、デフォルト: 1.0） |
+| `--auto-start` | | 開始値を波形に合わせる |
+| `--loop-match` | | ループ時に開始値に戻るよう調整 |
+| `--prefer-quality` | | 音質優先モード |
 
 ## 推奨設定
 
