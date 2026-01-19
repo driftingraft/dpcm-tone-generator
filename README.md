@@ -80,9 +80,26 @@ python dpcm_sunsoft.py --wave saw --start C2 --end F4 --fit --auto-start --outpu
 python dpcm_sunsoft.py --wave saw --start C2 --end F4 --max-error 15 --fit --output-dir ./sunsoft_samples
 ```
 
+#### 音質優先モードとサイズ優先モード
+
+デフォルトは**音質優先モード**です。対象音域の上端付近（C4〜E4など）を基本サンプルとして選択し、高い音は高いレート($F)で再生されるため、1周期あたりのサンプル数が多く高音質になります。
+
+**サイズ優先モード**（`--size-priority`）は、対象音域より高い音（E6など）も基本サンプル候補に含めます。サンプル数を最小化できますが、低いレートでの再生が増え、音質は低下します。
+
+```bash
+# 音質優先（デフォルト）- C4〜E4付近が基本サンプルに
+python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50
+# → 基本サンプル: C4, C#4, D4, D#4, E4（5サンプル、平均誤差13.8セント）
+
+# サイズ優先 - より少ないサンプル数
+python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-priority
+# → 基本サンプル: C5, C#5, D#6, E6（4サンプル、平均誤差22.2セント）
+```
+
 生成例（C2〜F4、30音階）：
 - 従来方式: 30サンプル
-- サンソフトベース方式: 4〜5サンプル（約80%削減）
+- サンソフトベース方式（音質優先）: 5サンプル
+- サンソフトベース方式（サイズ優先）: 4サンプル（約85%削減）
 
 ## オプション一覧
 
@@ -138,7 +155,8 @@ python dpcm_sunsoft.py --wave saw --start C2 --end F4 --max-error 15 --fit --out
 | `--volume` | | 音量（0.0-1.0、デフォルト: 1.0） |
 | `--auto-start` | | 開始値を波形に合わせる |
 | `--loop-match` | | ループ時に開始値に戻るよう調整 |
-| `--prefer-quality` | | 音質優先モード |
+| `--prefer-quality` | | レート選択で高レートを優先 |
+| `--size-priority` | | サイズ優先モード（対象範囲外のサンプルも使用、デフォルトは音質優先） |
 
 ## 推奨設定
 

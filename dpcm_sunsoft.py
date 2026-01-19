@@ -107,7 +107,8 @@ def find_minimum_sample_set(
     start_note: str,
     end_note: str,
     max_cents_error: float = 25.0,
-    prefer_higher_rate: bool = False
+    prefer_higher_rate: bool = False,
+    prefer_quality_samples: bool = True
 ) -> tuple[list[str], dict[str, tuple[str, int, float]]]:
     """
     指定音域をカバーする最小限の基本サンプルセットを計算（貪欲法）
@@ -117,6 +118,8 @@ def find_minimum_sample_set(
         end_note: 終了ノート (例: "F4")
         max_cents_error: 許容誤差（セント）
         prefer_higher_rate: Trueの場合、許容誤差内で最高レートを優先
+        prefer_quality_samples: Trueの場合、対象範囲内のサンプルを優先（音質優先）
+                                Falseの場合、上に拡張した範囲も含める（サイズ優先）
 
     Returns:
         (基本サンプルノートのリスト, ノートマッピング辞書)
@@ -126,10 +129,18 @@ def find_minimum_sample_set(
     target_notes = generate_note_range(start_note, end_note)
     uncovered = set(target_notes)
 
-    # 候補基本ノート（対象範囲より上に拡張）
-    # 高いノートのサンプルは低いレートで低い音を出せるため
-    extended_end_semitone = note_to_semitone(end_note) + 24  # 2オクターブ上まで
-    candidate_bases = generate_note_range(start_note, semitone_to_note(extended_end_semitone))
+    # 候補基本ノートの範囲を決定
+    if prefer_quality_samples:
+        # 音質優先：対象範囲内のみを候補とする
+        # 高い音は高いレート($F)で再生、低い音は低いレートで再生となり、
+        # 1周期あたりのサンプル数が多くなり音質が向上する
+        candidate_bases = generate_note_range(start_note, end_note)
+    else:
+        # サイズ優先：対象範囲より上に拡張
+        # 高いノートのサンプルは低いレートで低い音を出せるため、
+        # より少ないサンプル数で全音域をカバーできる
+        extended_end_semitone = note_to_semitone(end_note) + 24  # 2オクターブ上まで
+        candidate_bases = generate_note_range(start_note, semitone_to_note(extended_end_semitone))
 
     base_samples = []
     note_mapping = {}
@@ -147,10 +158,18 @@ def find_minimum_sample_set(
                 best_base = candidate
                 best_coverage = reachable
             elif len(reachable) == len(best_coverage) and len(reachable) > 0:
-                # 同数ならより高いノートを優先（高レートで高品質）
-                if note_to_semitone(candidate) > note_to_semitone(best_base):
-                    best_base = candidate
-                    best_coverage = reachable
+                if prefer_quality_samples:
+                    # 音質優先：より低いノートを優先
+                    # 低いノートは高いレート($F)で再生され、1周期のサンプル数が多くなる
+                    if note_to_semitone(candidate) < note_to_semitone(best_base):
+                        best_base = candidate
+                        best_coverage = reachable
+                else:
+                    # サイズ優先：より高いノートを優先
+                    # 高いノートは多くの低い音をカバーでき、サンプル数を減らせる
+                    if note_to_semitone(candidate) > note_to_semitone(best_base):
+                        best_base = candidate
+                        best_coverage = reachable
 
         if not best_base or len(best_coverage) == 0:
             # カバー不可能なノートが存在
@@ -342,7 +361,8 @@ def analyze_coverage(
     start_note: str,
     end_note: str,
     max_cents_error: float = 25.0,
-    prefer_higher_rate: bool = False
+    prefer_higher_rate: bool = False,
+    prefer_quality_samples: bool = True
 ) -> None:
     """
     分析のみ実行（ファイル生成なし）
@@ -350,8 +370,12 @@ def analyze_coverage(
     print(f"\n=== サンソフトベース方式 分析 ===")
     print(f"対象音域: {start_note} 〜 {end_note}")
     print(f"許容誤差: {max_cents_error} cents")
+    if prefer_quality_samples:
+        print(f"モード: 音質優先（対象範囲内のサンプルを使用）")
+    else:
+        print(f"モード: サイズ優先（拡張範囲のサンプルも使用）")
     if prefer_higher_rate:
-        print(f"品質優先モード: 有効（高レート優先）")
+        print(f"レート選択: 高レート優先")
     print()
 
     # 16種類のレートとセント差を表示
@@ -364,7 +388,7 @@ def analyze_coverage(
     # 最小サンプルセットを計算
     try:
         base_samples, note_mapping = find_minimum_sample_set(
-            start_note, end_note, max_cents_error, prefer_higher_rate
+            start_note, end_note, max_cents_error, prefer_higher_rate, prefer_quality_samples
         )
     except ValueError as e:
         print(f"エラー: {e}")
@@ -446,12 +470,16 @@ def main():
                        help='ループ時に開始値に戻るよう調整')
     parser.add_argument('--prefer-quality', action='store_true',
                        help='音質優先モード（高サンプルレート優先、レート選択でも高レートを優先）')
+    parser.add_argument('--size-priority', action='store_true',
+                       help='サイズ優先モード（サンプル数を最小化、対象範囲外のサンプルも使用）')
 
     args = parser.parse_args()
 
     # 分析のみモード
+    # prefer_quality_samplesはデフォルトTrue、--size-priority指定時にFalse
+    prefer_quality_samples = not args.size_priority
     if args.analyze_only:
-        analyze_coverage(args.start, args.end, args.max_error, args.prefer_quality)
+        analyze_coverage(args.start, args.end, args.max_error, args.prefer_quality, prefer_quality_samples)
         return
 
     # 波形タイプの決定
@@ -481,7 +509,7 @@ def main():
     # 最小サンプルセットを計算
     try:
         base_sample_notes, note_mapping = find_minimum_sample_set(
-            args.start, args.end, args.max_error, args.prefer_quality
+            args.start, args.end, args.max_error, args.prefer_quality, prefer_quality_samples
         )
     except ValueError as e:
         print(f"エラー: {e}")
