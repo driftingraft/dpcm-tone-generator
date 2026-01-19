@@ -1,0 +1,169 @@
+# NES dPCM Generator
+
+A Python tool for generating dPCM samples for the Nintendo Entertainment System (NES/Famicom).
+
+Generate dPCM samples (.dmc) at specified pitches from arbitrary waveforms. Optimized for creating looping bass/lead sounds.
+
+## Features
+
+- **Multiple input formats**: Basic waveforms (saw/triangle/sine/square/pulse), FDS waveforms, HEX strings, WAV files
+- **Fit mode**: Automatically finds parameters that exactly match valid dPCM sample lengths (8+128n), eliminating padding noise
+- **Quality mode**: Prioritizes higher sample rates over smaller file size
+- **Volume control**: Adjustable waveform amplitude
+- **Loop optimization**: Auto-start value, endpoint adjustment for seamless loops
+- **Batch generation**: Generate all notes (C2-F4) at once with ppmck definition files
+
+## Requirements
+
+- Python 3.8+
+- Standard library only (no additional packages required)
+
+## Installation
+
+```bash
+git clone https://github.com/yourusername/nes-dpcm-generator.git
+cd nes-dpcm-generator
+```
+
+## Usage
+
+### Basic Usage
+
+```bash
+# Generate a sawtooth wave at C3
+python dpcm_generator.py --wave saw --note C3 --output saw_c3.dmc
+
+# Recommended: fit mode + auto-start
+python dpcm_generator.py --wave saw --note C3 --fit --auto-start --output saw_c3.dmc
+```
+
+### From FDS Waveform
+
+```bash
+# FDS format (space-separated decimals, 0-63, 64 samples)
+python dpcm_generator.py --fds "00 01 02 03 ... 63 63 00 00" --note C3 --fit --auto-start --output fds_c3.dmc
+
+# From file
+python dpcm_generator.py --fds-file waveform.txt --note C3 --fit --auto-start --output fds_c3.dmc
+```
+
+### High Quality Settings
+
+```bash
+# Quality mode + multiple cycles + volume adjustment
+python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --volume 0.5 --auto-start --output saw_c3.dmc
+```
+
+### Batch Generation (All Notes)
+
+```bash
+# Generate 30 notes at once
+python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpcm_samples
+
+# ppmck definition file is also generated
+# → ./dpcm_samples/saw_defines.txt
+```
+
+## Options
+
+### dpcm_generator.py
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--wave` | `-w` | Waveform type: saw, triangle, sine, square, pulse25, pulse12 |
+| `--note` | `-n` | Note name (e.g., C3, A4, F#2) |
+| `--freq` | `-f` | Frequency in Hz |
+| `--rate` | `-r` | Sample rate index (0-15) |
+| `--output` | `-o` | Output filename |
+| `--fds` | | FDS waveform (space-separated decimals) |
+| `--fds-file` | | FDS waveform file |
+| `--hex` | `-x` | HEX waveform (hexadecimal string) |
+| `--hex-file` | | HEX waveform file |
+| `--wav` | | WAV file |
+| `--cycles` | `-c` | Number of cycles (default: 1) |
+| `--volume` | `-v` | Volume multiplier (default: 1.0) |
+| `--fit` | | Auto-fit to valid sample length |
+| `--quality` | `-q` | Prefer higher sample rate |
+| `--auto-start` | `-a` | Match start value to waveform |
+| `--loop-match` | `-l` | Match end value to start value |
+| `--show-wave` | | Display ASCII waveform |
+| `--info` | `-i` | Show sample rate information |
+
+### dpcm_batch.py
+
+In addition to the above:
+
+| Option | Description |
+|--------|-------------|
+| `--output-dir` | Output directory |
+| `--name` | Filename prefix for custom waveforms |
+
+## Recommended Settings
+
+### Highest Quality (larger size)
+
+```bash
+python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto-start --output output.dmc
+```
+
+### Balanced (recommended)
+
+```bash
+python dpcm_generator.py --wave saw --note C3 --fit --cycles 8 --auto-start --output output.dmc
+```
+
+### Smallest Size
+
+```bash
+python dpcm_generator.py --wave saw --note C3 --output output.dmc
+```
+
+## Technical Details
+
+### NES dPCM Specifications
+
+- 1-bit delta modulation (+2 or -2 per sample)
+- Sample values: 0-127 (7-bit)
+- Valid sample lengths: 8 + 128n (n=0,1,2,...)
+- Valid byte lengths: 1 + 16n
+- 16 sample rates available (NTSC)
+
+### How Fit Mode Works
+
+1. Searches all 16 sample rates
+2. Tests 1-64 cycles for each rate
+3. Finds combinations where total samples equals (8+128n)
+4. Selects optimal result within 15 cents error tolerance
+
+### The --auto-start Effect
+
+dPCM normally starts at value 64 (center). If your waveform starts at 0, there's a "descent" period while catching up to the target, causing noise. `--auto-start` begins at the waveform's first value, avoiding this issue.
+
+## Usage with ppmck
+
+Generated ppmck definition file example:
+
+```
+; dPCM Sample Definitions (saw)
+; Generated: 2025-01-16
+
+@DPCM0 = { "saw_C2.dmc", 1 }    ; C2
+@DPCM1 = { "saw_C_s2.dmc", 3 }  ; C#2
+@DPCM2 = { "saw_D2.dmc", 2 }    ; D2
+...
+```
+
+In MML:
+
+```
+E @DPCM0 | c   ; Play dPCM as tone
+```
+
+## License
+
+MIT License
+
+## References
+
+- [NESDev Wiki - APU DMC](https://www.nesdev.org/wiki/APU_DMC)
+- [ppmck](https://github.com/ppmck/ppmck)
