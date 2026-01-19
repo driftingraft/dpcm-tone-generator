@@ -293,10 +293,16 @@ def generate_sunsoft_defines(
     wave_type: str,
     start_note: str,
     end_note: str,
-    max_cents_error: float
+    max_cents_error: float,
+    start_index: int = 0,
+    dpcm_path: str = ""
 ) -> str:
     """
     ppmck形式の定義ファイルを生成
+
+    Args:
+        start_index: 連番の開始番号
+        dpcm_path: ファイルパスのプレフィックス
     """
     lines = []
 
@@ -307,18 +313,13 @@ def generate_sunsoft_defines(
     lines.append(f"; 許容誤差: {max_cents_error} cents")
     lines.append("")
 
-    # 基本サンプル情報
-    lines.append("; --- 基本サンプル情報 ---")
+    # 基本サンプル情報（参考用、番号は0から）
+    lines.append("; --- 基本サンプル情報（参考） ---")
     base_note_to_idx = {}
     for idx, sample in enumerate(base_samples):
         base_note_to_idx[sample['note']] = idx
-        lines.append(f"; @DPCM{idx}: {sample['filename']} ({sample['note']}, {sample['size']}bytes)")
-    lines.append("")
-
-    # 基本サンプル定義（最高レートで再生時の定義）
-    lines.append("; --- 基本サンプル定義 ---")
-    for idx, sample in enumerate(base_samples):
-        lines.append(f"@DPCM{idx} = {{ \"{sample['filename']}\", {sample['rate_index']} }}")
+        filepath = f"{dpcm_path}{sample['filename']}"
+        lines.append(f"; #{idx}: {filepath} ({sample['note']}, {sample['size']}bytes)")
     lines.append("")
 
     # ノートマッピング表（コメント）
@@ -340,18 +341,18 @@ def generate_sunsoft_defines(
 
     # ノート別の定義（各ノートに直接@DPCM番号を割り当て）
     lines.append("; --- ノート別サンプル定義 ---")
-    lines.append("; 各ノートに対応する定義（@DPCM番号10以降）")
+    lines.append(f"; 各ノートに対応する定義（@DPCM番号{start_index}以降）")
     lines.append("")
 
-    dpcm_num = 10
+    dpcm_num = start_index
     for note in target_notes:
         if note in note_mapping:
             base_note, rate_idx, error = note_mapping[note]
             # 基本サンプルのファイル名を取得
             sample_info = next((s for s in base_samples if s['note'] == base_note), None)
             if sample_info:
-                safe_note = note.replace("#", "_s")
-                lines.append(f"@DPCM{dpcm_num} = {{ \"{sample_info['filename']}\", {rate_idx} }}  ; {note} (誤差: {error:+.1f}cents)")
+                filepath = f"{dpcm_path}{sample_info['filename']}"
+                lines.append(f"@DPCM{dpcm_num} = {{ \"{filepath}\", {rate_idx}, 0, 0, 1 }}  ; {note} (誤差: {error:+.1f}cents)")
                 dpcm_num += 1
 
     return "\n".join(lines)
@@ -472,6 +473,14 @@ def main():
                        help='音質優先モード（高サンプルレート優先、レート選択でも高レートを優先）')
     parser.add_argument('--size-priority', action='store_true',
                        help='サイズ優先モード（サンプル数を最小化、対象範囲外のサンプルも使用）')
+    parser.add_argument('--dpcm-start-index',
+                       type=int,
+                       default=0,
+                       help='ppmck定義の連番開始番号（デフォルト: 0）')
+    parser.add_argument('--dpcm-path',
+                       type=str,
+                       default='',
+                       help='ppmck定義でのdmcファイルパス（例: "D:\\myFolder\\"）')
 
     args = parser.parse_args()
 
@@ -546,7 +555,9 @@ def main():
         wave_type,
         args.start,
         args.end,
-        args.max_error
+        args.max_error,
+        start_index=args.dpcm_start_index,
+        dpcm_path=args.dpcm_path
     )
 
     defines_file = os.path.join(args.output_dir, f"{args.prefix}{wave_type}_defines.txt")

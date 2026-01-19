@@ -94,22 +94,31 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
     return results
 
 
-def generate_ppmck_defines(results: list, wave_type: str) -> str:
+def generate_ppmck_defines(results: list, wave_type: str,
+                           start_index: int = 0, dpcm_path: str = "") -> str:
     """
     ppmck用のサンプル定義を生成
+
+    Args:
+        results: 生成結果のリスト
+        wave_type: 波形タイプ名
+        start_index: 連番の開始番号
+        dpcm_path: ファイルパスのプレフィックス
     """
     lines = [f"; === {wave_type}波 dPCMサンプル定義 ==="]
     lines.append("; 注意: 各音階ごとにサンプルレートが異なります")
     lines.append("")
-    
+
     for i, r in enumerate(results):
         note = r['note']
-        lines.append(f'@DPCM{i} = {{ "{r["filename"]}", {r["rate_index"]} }}  ; {note}')
-    
+        index = start_index + i
+        filepath = f"{dpcm_path}{r['filename']}"
+        lines.append(f'@DPCM{index} = {{ "{filepath}", {r["rate_index"]}, 0, 0, 1 }}  ; {note}')
+
     lines.append("")
     lines.append("; 使用例（Eチャンネル）:")
-    lines.append("; E @DPCM0 | c4  ; ループ再生でトーン")
-    
+    lines.append(f"; E @DPCM{start_index} | c4  ; ループ再生でトーン")
+
     return "\n".join(lines)
 
 
@@ -165,7 +174,15 @@ def main():
     parser.add_argument('--output-dir', '-o',
                         default='./dpcm_samples',
                         help='出力ディレクトリ')
-    
+    parser.add_argument('--dpcm-start-index',
+                        type=int,
+                        default=0,
+                        help='ppmck定義の連番開始番号（デフォルト: 0）')
+    parser.add_argument('--dpcm-path',
+                        type=str,
+                        default='',
+                        help='ppmck定義でのdmcファイルパス（例: "D:\\myFolder\\"）')
+
     args = parser.parse_args()
     
     # カスタム波形の読み込み
@@ -235,7 +252,9 @@ def main():
                                  min_rate_index=args.min_rate_index or 0)
     
     # ppmck定義ファイル出力
-    defines = generate_ppmck_defines(results, wave_type)
+    defines = generate_ppmck_defines(results, wave_type,
+                                      start_index=args.dpcm_start_index,
+                                      dpcm_path=args.dpcm_path)
     defines_path = os.path.join(args.output_dir, f"{wave_type}_defines.txt")
     with open(defines_path, 'w') as f:
         f.write(defines)

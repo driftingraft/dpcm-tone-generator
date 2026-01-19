@@ -594,7 +594,15 @@ def main():
     parser.add_argument('--show-wave',
                         action='store_true',
                         help='波形をASCIIアートで表示')
-    
+    parser.add_argument('--dpcm-index',
+                        type=int,
+                        default=0,
+                        help='ppmck定義の番号（デフォルト: 0）')
+    parser.add_argument('--dpcm-path',
+                        type=str,
+                        default='',
+                        help='ppmck定義でのdmcファイルパス（例: "D:\\myFolder\\"）')
+
     args = parser.parse_args()
     
     if args.info:
@@ -738,10 +746,11 @@ def main():
     print(f"出力完了: {args.output}")
     print()
     print("=== ppmckでの使用例 ===")
-    print(f'@DPCM0 = {{ "{args.output}", {rate_index} }}')
+    filepath = f"{args.dpcm_path}{args.output}"
+    print(f'@DPCM{args.dpcm_index} = {{ "{filepath}", {rate_index}, 0, 0, 1 }}')
     print()
     print("; MMLでループ再生する場合:")
-    print(f"E @DPCM0 | c   ; トーンとして鳴らす")
+    print(f"E @DPCM{args.dpcm_index} | c   ; トーンとして鳴らす")
 
 
 if __name__ == "__main__":

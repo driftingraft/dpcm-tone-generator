@@ -126,6 +126,8 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 | `--loop-match` | `-l` | 終端値を開始値に戻す |
 | `--show-wave` | | 波形をASCII表示 |
 | `--info` | `-i` | サンプルレート情報を表示 |
+| `--dpcm-index` | | ppmck定義の番号（デフォルト: 0） |
+| `--dpcm-path` | | ppmck定義でのdmcファイルパス |
 
 ### dpcm_batch.py
 
@@ -135,6 +137,8 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 |-----------|--------|------|
 | `--output-dir` | `-o` | 出力ディレクトリ |
 | `--name` | `-n` | カスタム波形使用時のファイル名プレフィックス |
+| `--dpcm-start-index` | | ppmck定義の連番開始番号（デフォルト: 0） |
+| `--dpcm-path` | | ppmck定義でのdmcファイルパス |
 
 ### dpcm_sunsoft.py
 
@@ -157,6 +161,8 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 | `--loop-match` | | ループ時に開始値に戻るよう調整 |
 | `--prefer-quality` | | レート選択で高レートを優先 |
 | `--size-priority` | | サイズ優先モード（対象範囲外のサンプルも使用、デフォルトは音質優先） |
+| `--dpcm-start-index` | | ppmck定義（音階部分）の連番開始番号（デフォルト: 0） |
+| `--dpcm-path` | | ppmck定義でのdmcファイルパス |
 
 ## 推奨設定
 
@@ -210,22 +216,36 @@ dPCMは通常、開始値64（中央値）から始まります。波形が0か�
 
 ## ppmckでの使用例
 
-生成されるppmck定義ファイルの例：
+生成されるppmck定義ファイルの例（ループフラグ付き）：
 
 ```
-; dPCMサンプル定義 (saw)
-; 生成日時: 2025-01-16
+; === saw波 dPCMサンプル定義 ===
+; 注意: 各音階ごとにサンプルレートが異なります
 
-@DPCM0 = { "saw_C2.dmc", 1 }    ; C2
-@DPCM1 = { "saw_C_s2.dmc", 3 }  ; C#2
-@DPCM2 = { "saw_D2.dmc", 2 }    ; D2
+@DPCM0 = { "saw_C2.dmc", 12, 0, 0, 1 }   ; C2
+@DPCM1 = { "saw_C_s2.dmc", 1, 0, 0, 1 }  ; C#2
+@DPCM2 = { "saw_D2.dmc", 6, 0, 0, 1 }    ; D2
+...
+```
+
+定義番号とパスを指定する場合：
+
+```bash
+# 定義番号を20から開始、パスを指定
+python dpcm_batch.py --wave saw --fit --dpcm-start-index 20 --dpcm-path "D:\music\dpcm\" --output-dir ./out
+```
+
+出力例：
+```
+@DPCM20 = { "D:\music\dpcm\saw_C2.dmc", 12, 0, 0, 1 }  ; C2
+@DPCM21 = { "D:\music\dpcm\saw_C_s2.dmc", 1, 0, 0, 1 } ; C#2
 ...
 ```
 
 MMLでの使用：
 
 ```
-E @DPCM0 | c   ; dPCMをトーンとして再生
+E @DPCM0 | c   ; dPCMをトーンとして再生（ループ）
 ```
 
 ## ライセンス
