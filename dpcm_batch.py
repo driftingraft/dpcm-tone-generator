@@ -23,7 +23,7 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
@@ -37,9 +37,10 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
         
         if fit:
             # fitモード: 有効なdPCMサンプル数にぴったり合わせる
-            result = find_best_fit_params(target_freq, min_cycles=cycles, 
+            result = find_best_fit_params(target_freq, min_cycles=cycles,
                                           max_cycles=max(cycles * 4, 64),
-                                          prefer_quality=prefer_quality)
+                                          prefer_quality=prefer_quality,
+                                          min_rate_index=min_rate_index)
             if result is None:
                 print(f"  {note}: スキップ（適切なパラメータなし）")
                 continue
@@ -158,6 +159,9 @@ def main():
     parser.add_argument('--quality', '-q',
                         action='store_true',
                         help='fitモード時、サイズより高サンプルレートを優先（高音質）')
+    parser.add_argument('--min-rate-index',
+                        type=int,
+                        help='fitモード時、サンプルレートの下限インデックス（0-15）を指定')
     parser.add_argument('--output-dir', '-o',
                         default='./dpcm_samples',
                         help='出力ディレクトリ')
@@ -212,7 +216,12 @@ def main():
         else:
             print(f"音量: {args.volume:.0%}")
     if args.fit:
-        quality_str = "高品質優先" if args.quality else "サイズ優先"
+        if args.min_rate_index:
+            quality_str = f"レート下限${args.min_rate_index:X}"
+        elif args.quality:
+            quality_str = "高品質優先"
+        else:
+            quality_str = "サイズ優先"
         print(f"fitモード: 有効 ({quality_str})")
     if args.auto_start:
         print(f"開始値自動設定: 有効")
@@ -222,7 +231,8 @@ def main():
     
     results = generate_note_set(wave_type, args.output_dir, custom_waveform=custom_waveform,
                                  cycles=args.cycles, volume=args.volume, auto_start=args.auto_start,
-                                 loop_match=args.loop_match, fit=args.fit, prefer_quality=args.quality)
+                                 loop_match=args.loop_match, fit=args.fit, prefer_quality=args.quality,
+                                 min_rate_index=args.min_rate_index or 0)
     
     # ppmck定義ファイル出力
     defines = generate_ppmck_defines(results, wave_type)

@@ -41,3 +41,35 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 # サンプルレート情報表示
 python dpcm_generator.py --info
 ```
+
+## 開発時の注意点
+
+### ファイル間の依存関係
+
+`dpcm_batch.py`は`dpcm_generator.py`から関数をインポートして使用している。
+
+```python
+from dpcm_generator import (
+    generate_waveform, encode_dpcm, resample_waveform, adjust_volume,
+    freq_from_note, find_best_sample_rate, find_best_fit_params,
+    ...
+)
+```
+
+**重要**: `dpcm_generator.py`に以下の変更を加えた場合、`dpcm_batch.py`も同様に更新が必要：
+
+- コマンドライン引数の追加・変更（特にfitモード関連のオプション）
+- `find_best_fit_params`等の共有関数のシグネチャ変更
+- 新しいエンコード/デコードオプションの追加
+
+### 動作確認
+
+変更後は両方のスクリプトで動作確認を行う：
+
+```bash
+# 単体生成の確認
+python3 dpcm_generator.py --wave saw --note C3 --fit --output /tmp/test.dmc
+
+# バッチ生成の確認
+python3 dpcm_batch.py --wave saw --fit --output-dir /tmp/batch_test
+```

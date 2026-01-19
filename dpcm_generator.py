@@ -406,31 +406,36 @@ def find_best_sample_rate(target_freq: float, min_samples: int = 32) -> tuple[fl
     return best_rate, best_index, best_samples
 
 
-def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: int = 64, max_cents_error: float = 15.0, prefer_quality: bool = False) -> tuple[float, int, int, int, int]:
+def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: int = 64, max_cents_error: float = 15.0, prefer_quality: bool = False, min_rate_index: int = 0) -> tuple[float, int, int, int, int]:
     """
     目標周波数に対して、有効なdPCMサンプル数(8+128n)にぴったり収まる
     最適なサンプルレート・周期数の組み合わせを見つける
-    
+
     min_cycles以上の周期数で、誤差が小さく、条件に合うものを探す
-    
+
     Args:
         target_freq: 目標周波数
         min_cycles: 最小周期数
         max_cycles: 最大周期数
         max_cents_error: 許容する最大誤差（セント）
         prefer_quality: Trueの場合、サイズよりサンプルレートを優先（高音質）
-    
+        min_rate_index: サンプルレートの下限インデックス（0-15）
+
     Returns:
         (sample_rate, rate_index, samples_per_cycle, num_cycles, total_samples)
     """
     valid_counts = get_valid_dpcm_sample_counts()
-    
+
     candidates = []
-    
+
     for rate_idx, rate in enumerate(SAMPLE_RATES_NTSC):
+        # 指定された下限レート未満はスキップ
+        if rate_idx < min_rate_index:
+            continue
+
         # このレートでの理想的な1周期サンプル数
         ideal_samples_per_cycle = rate / target_freq
-        
+
         if ideal_samples_per_cycle < 8:  # 最小サンプル数未満
             continue
         
@@ -537,6 +542,9 @@ def main():
     parser.add_argument('--quality', '-q',
                         action='store_true',
                         help='fitモード時、サイズより高サンプルレートを優先（高音質）')
+    parser.add_argument('--min-rate-index',
+                        type=int,
+                        help='fitモード時、サンプルレートの下限インデックス（0-15）を指定')
     parser.add_argument('--info', '-i',
                         action='store_true',
                         help='サンプルレート一覧を表示')
@@ -592,9 +600,10 @@ def main():
     
     if fit_mode:
         # fitモード: 有効なdPCMサンプル数にぴったり合わせる
-        result = find_best_fit_params(target_freq, min_cycles=args.cycles, 
+        result = find_best_fit_params(target_freq, min_cycles=args.cycles,
                                        max_cycles=max(args.cycles * 4, 64),
-                                       prefer_quality=args.quality)
+                                       prefer_quality=args.quality,
+                                       min_rate_index=args.min_rate_index or 0)
         if result is None:
             print("エラー: 適切なパラメータが見つかりませんでした")
             return
@@ -630,7 +639,12 @@ def main():
     print(f"実際の周波数  : {actual_freq:.2f} Hz")
     print(f"誤差          : {cents_error:+.1f} セント")
     if fit_mode:
-        quality_str = "高品質優先" if args.quality else "サイズ優先"
+        if args.min_rate_index:
+            quality_str = f"レート下限${args.min_rate_index:X}"
+        elif args.quality:
+            quality_str = "高品質優先"
+        else:
+            quality_str = "サイズ優先"
         print(f"fitモード     : 有効 ({quality_str})")
     elif total_samples != final_samples:
         print(f"パディング    : {total_samples} → {final_samples} サンプル")
