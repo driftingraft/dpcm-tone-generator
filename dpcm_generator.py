@@ -377,6 +377,49 @@ def freq_from_note(note_name: str) -> float:
     return 440.0 * (2 ** (semitones_from_a4 / 12))
 
 
+def note_to_semitone(note_name: str) -> int:
+    """
+    ノート名をC0基準の半音番号に変換
+    例: "C0" -> 0, "C4" -> 48, "A4" -> 57
+    """
+    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+    if '#' in note_name:
+        base_note = note_name[:2]
+        octave = int(note_name[2:])
+    elif 'b' in note_name:
+        base_idx = note_names.index(note_name[0])
+        base_note = note_names[base_idx - 1]
+        octave = int(note_name[2:])
+    else:
+        base_note = note_name[0]
+        octave = int(note_name[1:])
+
+    semitone = note_names.index(base_note)
+    return octave * 12 + semitone
+
+
+def semitone_to_note(semitone: int) -> str:
+    """
+    半音番号をノート名に変換
+    例: 0 -> "C0", 48 -> "C4", 57 -> "A4"
+    """
+    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    octave = semitone // 12
+    note_idx = semitone % 12
+    return f"{note_names[note_idx]}{octave}"
+
+
+def generate_note_range(start_note: str, end_note: str) -> list[str]:
+    """
+    指定範囲のノートリストを生成
+    例: ("C2", "E2") -> ["C2", "C#2", "D2", "D#2", "E2"]
+    """
+    start_semitone = note_to_semitone(start_note)
+    end_semitone = note_to_semitone(end_note)
+    return [semitone_to_note(s) for s in range(start_semitone, end_semitone + 1)]
+
+
 def find_best_sample_rate(target_freq: float, min_samples: int = 32) -> tuple[float, int, int]:
     """
     目標周波数に対して最適なサンプルレートを見つける

@@ -1,0 +1,530 @@
+#!/usr/bin/env python3
+"""
+サンソフトベース方式 dPCMサンプル生成ツール
+
+最小限のサンプル数で全音階をカバーするdPCMセットを生成します。
+各サンプルを異なる再生レートで再利用することで、メモリ効率を最大化します。
+"""
+
+import os
+import math
+import argparse
+from dpcm_generator import (
+    generate_waveform, encode_dpcm, resample_waveform, adjust_volume,
+    freq_from_note, find_best_fit_params,
+    parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
+    note_to_semitone, semitone_to_note, generate_note_range,
+    SAMPLE_RATES_NTSC
+)
+
+
+def calculate_rate_ratios() -> list[float]:
+    """
+    最高レート($F)を基準とした各レートのセント差を計算
+
+    Returns:
+        16要素のリスト。各要素は$Fからのセント差（負の値または0）
+    """
+    base_rate = SAMPLE_RATES_NTSC[15]  # $F = 33143.9 Hz
+    ratios = []
+    for rate in SAMPLE_RATES_NTSC:
+        cents = 1200 * math.log2(rate / base_rate)
+        ratios.append(cents)
+    return ratios
+
+
+def get_reachable_notes(
+    base_note: str,
+    target_notes: list[str],
+    max_cents_error: float = 25.0
+) -> list[tuple[str, int, float]]:
+    """
+    指定した基本ノートから、各レートで到達可能なノートを計算
+
+    サンプルを最高レート($F)で再生すると基本ノートの音程になる。
+    より低いレートで再生すると、低い音程になる。
+    サンプル数は整数に丸められるため、その誤差も考慮する。
+
+    Args:
+        base_note: 基本サンプルのノート名 (例: "C3")
+        target_notes: カバー対象のノートリスト
+        max_cents_error: 許容誤差（セント）
+
+    Returns:
+        (到達ノート名, レートインデックス, 誤差セント) のリスト
+    """
+    base_freq = freq_from_note(base_note)
+    highest_rate = SAMPLE_RATES_NTSC[15]  # $F
+
+    # 最高レートでの1周期サンプル数（整数に丸める）
+    samples_per_cycle = round(highest_rate / base_freq)
+    if samples_per_cycle < 1:
+        samples_per_cycle = 1
+
+    # 実際の基本周波数（丸め誤差を含む）
+    actual_base_freq = highest_rate / samples_per_cycle
+
+    reachable = []
+
+    for target_note in target_notes:
+        target_freq = freq_from_note(target_note)
+
+        # 各レートでの実際の周波数との差をチェック
+        best_rate_idx = None
+        best_error = float('inf')
+
+        for rate_idx, sample_rate in enumerate(SAMPLE_RATES_NTSC):
+            # このレートで再生したときの実際の周波数
+            # サンプル数は固定で、レートだけが変わる
+            actual_freq = actual_base_freq * (sample_rate / highest_rate)
+
+            if actual_freq > 0 and target_freq > 0:
+                error_cents = 1200 * math.log2(actual_freq / target_freq)
+            else:
+                error_cents = float('inf')
+
+            if abs(error_cents) <= max_cents_error and abs(error_cents) < abs(best_error):
+                best_error = error_cents
+                best_rate_idx = rate_idx
+
+        if best_rate_idx is not None:
+            reachable.append((target_note, best_rate_idx, best_error))
+
+    return reachable
+
+
+def find_minimum_sample_set(
+    start_note: str,
+    end_note: str,
+    max_cents_error: float = 25.0
+) -> tuple[list[str], dict[str, tuple[str, int, float]]]:
+    """
+    指定音域をカバーする最小限の基本サンプルセットを計算（貪欲法）
+
+    Args:
+        start_note: 開始ノート (例: "C2")
+        end_note: 終了ノート (例: "F4")
+        max_cents_error: 許容誤差（セント）
+
+    Returns:
+        (基本サンプルノートのリスト, ノートマッピング辞書)
+        マッピング辞書: {ノート名: (使用サンプルノート, レートインデックス, 誤差)}
+    """
+    # 対象ノートのリスト
+    target_notes = generate_note_range(start_note, end_note)
+    uncovered = set(target_notes)
+
+    # 候補基本ノート（対象範囲より上に拡張）
+    # 高いノートのサンプルは低いレートで低い音を出せるため
+    extended_end_semitone = note_to_semitone(end_note) + 24  # 2オクターブ上まで
+    candidate_bases = generate_note_range(start_note, semitone_to_note(extended_end_semitone))
+
+    base_samples = []
+    note_mapping = {}
+
+    # 貪欲法で集合被覆
+    while uncovered:
+        best_base = None
+        best_coverage = []
+
+        for candidate in candidate_bases:
+            # このサンプルでカバーできるノートを計算
+            reachable = get_reachable_notes(candidate, list(uncovered), max_cents_error)
+
+            if len(reachable) > len(best_coverage):
+                best_base = candidate
+                best_coverage = reachable
+            elif len(reachable) == len(best_coverage) and len(reachable) > 0:
+                # 同数ならより高いノートを優先（高レートで高品質）
+                if note_to_semitone(candidate) > note_to_semitone(best_base):
+                    best_base = candidate
+                    best_coverage = reachable
+
+        if not best_base or len(best_coverage) == 0:
+            # カバー不可能なノートが存在
+            remaining = sorted(uncovered, key=note_to_semitone)
+            raise ValueError(f"カバーできないノート: {remaining}")
+
+        base_samples.append(best_base)
+
+        for note, rate_idx, error in best_coverage:
+            # 既にマッピングがある場合は誤差が小さい方を採用
+            if note not in note_mapping or abs(error) < abs(note_mapping[note][2]):
+                note_mapping[note] = (best_base, rate_idx, error)
+            uncovered.discard(note)
+
+    return base_samples, note_mapping
+
+
+def generate_sunsoft_samples(
+    base_notes: list[str],
+    wave_type: str,
+    output_dir: str,
+    prefix: str = "sunsoft_",
+    custom_waveform: list[float] = None,
+    cycles: int = 8,
+    volume: float = 1.0,
+    auto_start: bool = False,
+    loop_match: bool = False,
+    fit: bool = True,
+    prefer_quality: bool = False
+) -> list[dict]:
+    """
+    基本サンプルファイル群を生成
+
+    各サンプルは最高レート($F)で基本ノートを再生することを想定して生成
+
+    Returns:
+        生成されたサンプル情報のリスト
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    results = []
+
+    for base_note in base_notes:
+        target_freq = freq_from_note(base_note)
+
+        # fitモードで最適パラメータを探索（最高レート$F=15を想定）
+        if fit:
+            result = find_best_fit_params(
+                target_freq,
+                min_cycles=cycles,
+                max_cycles=max(cycles * 4, 64),
+                prefer_quality=prefer_quality,
+                min_rate_index=15  # 最高レートを使用
+            )
+            if result is None:
+                # フォールバック: min_rate_indexを緩和
+                result = find_best_fit_params(
+                    target_freq,
+                    min_cycles=cycles,
+                    max_cycles=max(cycles * 4, 64),
+                    prefer_quality=prefer_quality,
+                    min_rate_index=12
+                )
+            if result is None:
+                print(f"  {base_note}: スキップ（適切なパラメータなし）")
+                continue
+            sample_rate, rate_index, num_samples, num_cycles, total_samples = result
+        else:
+            # fitなしの場合は最高レートで固定計算
+            sample_rate = SAMPLE_RATES_NTSC[15]
+            num_samples = round(sample_rate / target_freq)
+            rate_index = 15
+            num_cycles = cycles
+            total_samples = num_samples * num_cycles
+
+        actual_freq = sample_rate / num_samples
+
+        # ファイル名（#を_sに置換）
+        safe_note = base_note.replace("#", "_s")
+        filename = f"{prefix}{wave_type}_{safe_note}.dmc"
+        filepath = os.path.join(output_dir, filename)
+
+        # 波形生成（1周期分）
+        if custom_waveform:
+            waveform_1cycle = resample_waveform(custom_waveform, num_samples)
+        else:
+            waveform_1cycle = generate_waveform(wave_type, num_samples)
+
+        # 音量調整
+        if volume != 1.0:
+            waveform_1cycle = adjust_volume(waveform_1cycle, volume)
+
+        # 複数周期に拡張
+        waveform = waveform_1cycle * num_cycles
+
+        # エンコード
+        dpcm_data = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
+
+        with open(filepath, 'wb') as f:
+            f.write(dpcm_data)
+
+        results.append({
+            'note': base_note,
+            'filename': filename,
+            'rate_index': rate_index,
+            'samples_per_cycle': num_samples,
+            'cycles': num_cycles,
+            'size': len(dpcm_data),
+            'actual_freq': actual_freq,
+            'target_freq': target_freq,
+        })
+
+        print(f"  基本サンプル {base_note}: {filename} (rate=${rate_index:X}, {len(dpcm_data)}bytes)")
+
+    return results
+
+
+def generate_sunsoft_defines(
+    base_samples: list[dict],
+    note_mapping: dict[str, tuple[str, int, float]],
+    target_notes: list[str],
+    wave_type: str,
+    start_note: str,
+    end_note: str,
+    max_cents_error: float
+) -> str:
+    """
+    ppmck形式の定義ファイルを生成
+    """
+    lines = []
+
+    # ヘッダー
+    lines.append(f"; === {wave_type} dPCMサンプル定義（サンソフトベース方式） ===")
+    lines.append(f"; 対象音域: {start_note}〜{end_note} ({len(target_notes)}音階)")
+    lines.append(f"; 基本サンプル数: {len(base_samples)}")
+    lines.append(f"; 許容誤差: {max_cents_error} cents")
+    lines.append("")
+
+    # 基本サンプル情報
+    lines.append("; --- 基本サンプル情報 ---")
+    base_note_to_idx = {}
+    for idx, sample in enumerate(base_samples):
+        base_note_to_idx[sample['note']] = idx
+        lines.append(f"; @DPCM{idx}: {sample['filename']} ({sample['note']}, {sample['size']}bytes)")
+    lines.append("")
+
+    # 基本サンプル定義（最高レートで再生時の定義）
+    lines.append("; --- 基本サンプル定義 ---")
+    for idx, sample in enumerate(base_samples):
+        lines.append(f"@DPCM{idx} = {{ \"{sample['filename']}\", {sample['rate_index']} }}")
+    lines.append("")
+
+    # ノートマッピング表（コメント）
+    lines.append("; --- ノートマッピング表 ---")
+    lines.append("; 各ノートを再生するには、指定サンプルを指定レートで再生します")
+    lines.append(";")
+    lines.append("; ノート   | サンプル | レート | 誤差(cents)")
+    lines.append("; ---------|----------|--------|------------")
+
+    for note in target_notes:
+        if note in note_mapping:
+            base_note, rate_idx, error = note_mapping[note]
+            sample_idx = base_note_to_idx[base_note]
+            error_str = f"{error:+.1f}"
+            lines.append(f"; {note:8s} | @DPCM{sample_idx}  | ${rate_idx:X}     | {error_str}")
+        else:
+            lines.append(f"; {note:8s} | (カバー不可)")
+    lines.append("")
+
+    # ノート別の定義（各ノートに直接@DPCM番号を割り当て）
+    lines.append("; --- ノート別サンプル定義 ---")
+    lines.append("; 各ノートに対応する定義（@DPCM番号10以降）")
+    lines.append("")
+
+    dpcm_num = 10
+    for note in target_notes:
+        if note in note_mapping:
+            base_note, rate_idx, error = note_mapping[note]
+            # 基本サンプルのファイル名を取得
+            sample_info = next((s for s in base_samples if s['note'] == base_note), None)
+            if sample_info:
+                safe_note = note.replace("#", "_s")
+                lines.append(f"@DPCM{dpcm_num} = {{ \"{sample_info['filename']}\", {rate_idx} }}  ; {note} (誤差: {error:+.1f}cents)")
+                dpcm_num += 1
+
+    return "\n".join(lines)
+
+
+def analyze_coverage(
+    start_note: str,
+    end_note: str,
+    max_cents_error: float = 25.0
+) -> None:
+    """
+    分析のみ実行（ファイル生成なし）
+    """
+    print(f"\n=== サンソフトベース方式 分析 ===")
+    print(f"対象音域: {start_note} 〜 {end_note}")
+    print(f"許容誤差: {max_cents_error} cents")
+    print()
+
+    # 16種類のレートとセント差を表示
+    print("dPCMサンプルレート（$F基準のセント差）:")
+    rate_ratios = calculate_rate_ratios()
+    for idx, (rate, cents) in enumerate(zip(SAMPLE_RATES_NTSC, rate_ratios)):
+        print(f"  ${idx:X}: {rate:8.2f} Hz ({cents:+7.1f} cents)")
+    print()
+
+    # 最小サンプルセットを計算
+    try:
+        base_samples, note_mapping = find_minimum_sample_set(
+            start_note, end_note, max_cents_error
+        )
+    except ValueError as e:
+        print(f"エラー: {e}")
+        return
+
+    print(f"必要な基本サンプル数: {len(base_samples)}")
+    print(f"基本サンプルノート: {', '.join(base_samples)}")
+    print()
+
+    # マッピング詳細
+    target_notes = generate_note_range(start_note, end_note)
+    print("ノートマッピング:")
+    print(f"{'ノート':8s} | {'基本サンプル':10s} | {'レート':6s} | 誤差")
+    print("-" * 50)
+
+    for note in target_notes:
+        if note in note_mapping:
+            base_note, rate_idx, error = note_mapping[note]
+            print(f"{note:8s} | {base_note:10s} | ${rate_idx:X}     | {error:+.1f} cents")
+
+    # 統計
+    errors = [abs(note_mapping[n][2]) for n in target_notes if n in note_mapping]
+    if errors:
+        print()
+        print(f"誤差統計:")
+        print(f"  最大誤差: {max(errors):.1f} cents")
+        print(f"  平均誤差: {sum(errors)/len(errors):.1f} cents")
+        print(f"  カバー率: {len(errors)}/{len(target_notes)} ({100*len(errors)/len(target_notes):.1f}%)")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='サンソフトベース方式 dPCMサンプル生成ツール',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+例:
+  # 分析のみ実行（波形指定不要）
+  python dpcm_sunsoft.py --analyze-only --start C2 --end F4
+
+  # サンプル生成
+  python dpcm_sunsoft.py --wave saw --start C2 --end F4 --fit --output-dir ./sunsoft_samples
+"""
+    )
+
+    # 波形オプション
+    wave_group = parser.add_mutually_exclusive_group(required=True)
+    wave_group.add_argument('--wave', choices=['saw', 'triangle', 'sine', 'square', 'pulse25', 'pulse12'],
+                           help='波形タイプ')
+    wave_group.add_argument('--fds', metavar='FILE', help='FDS波形ファイル')
+    wave_group.add_argument('--hex', metavar='STRING', help='16進数波形データ')
+    wave_group.add_argument('--wav', metavar='FILE', help='WAVファイル')
+    wave_group.add_argument('--analyze-only', action='store_true',
+                           help='分析のみ実行（サンプル生成なし）')
+
+    # 音域オプション
+    parser.add_argument('--start', default='C2', help='開始ノート (デフォルト: C2)')
+    parser.add_argument('--end', default='F4', help='終了ノート (デフォルト: F4)')
+
+    # 誤差オプション
+    parser.add_argument('--max-error', type=float, default=25.0,
+                       help='許容誤差（セント）(デフォルト: 25.0)')
+
+    # 出力オプション
+    parser.add_argument('--output-dir', '-o', default='./sunsoft_dpcm',
+                       help='出力ディレクトリ (デフォルト: ./sunsoft_dpcm)')
+    parser.add_argument('--prefix', default='sunsoft_',
+                       help='ファイル名プレフィックス (デフォルト: sunsoft_)')
+
+    # サンプル生成オプション
+    parser.add_argument('--fit', action='store_true',
+                       help='fitモード（dPCM有効サンプル数に合わせる）')
+    parser.add_argument('--cycles', type=int, default=8,
+                       help='周期数 (デフォルト: 8)')
+    parser.add_argument('--volume', type=float, default=1.0,
+                       help='音量 (0.0-1.0, デフォルト: 1.0)')
+    parser.add_argument('--auto-start', action='store_true',
+                       help='開始値を波形に合わせる')
+    parser.add_argument('--loop-match', action='store_true',
+                       help='ループ時に開始値に戻るよう調整')
+    parser.add_argument('--prefer-quality', action='store_true',
+                       help='音質優先モード（高サンプルレート優先）')
+
+    args = parser.parse_args()
+
+    # 分析のみモード
+    if args.analyze_only:
+        analyze_coverage(args.start, args.end, args.max_error)
+        return
+
+    # 波形タイプの決定
+    if args.wave:
+        wave_type = args.wave
+        custom_waveform = None
+    elif args.fds:
+        wave_type = os.path.splitext(os.path.basename(args.fds))[0]
+        with open(args.fds, 'r') as f:
+            custom_waveform = parse_fds_waveform(f.read())
+    elif args.hex:
+        wave_type = "hex"
+        custom_waveform = parse_hex_waveform(args.hex)
+    elif args.wav:
+        wave_type = os.path.splitext(os.path.basename(args.wav))[0]
+        custom_waveform, _ = load_wav_waveform(args.wav)
+    else:
+        parser.error('波形タイプを指定してください')
+        return
+
+    print(f"=== サンソフトベース方式 dPCMサンプル生成 ===")
+    print(f"波形: {wave_type}")
+    print(f"対象音域: {args.start} 〜 {args.end}")
+    print(f"許容誤差: {args.max_error} cents")
+    print()
+
+    # 最小サンプルセットを計算
+    try:
+        base_sample_notes, note_mapping = find_minimum_sample_set(
+            args.start, args.end, args.max_error
+        )
+    except ValueError as e:
+        print(f"エラー: {e}")
+        return
+
+    target_notes = generate_note_range(args.start, args.end)
+
+    print(f"必要な基本サンプル数: {len(base_sample_notes)}")
+    print(f"基本サンプルノート: {', '.join(base_sample_notes)}")
+    print()
+
+    # サンプル生成
+    print("サンプル生成中...")
+    base_samples = generate_sunsoft_samples(
+        base_sample_notes,
+        wave_type,
+        args.output_dir,
+        prefix=args.prefix,
+        custom_waveform=custom_waveform,
+        cycles=args.cycles,
+        volume=args.volume,
+        auto_start=args.auto_start,
+        loop_match=args.loop_match,
+        fit=args.fit,
+        prefer_quality=args.prefer_quality
+    )
+    print()
+
+    # 定義ファイル生成
+    defines = generate_sunsoft_defines(
+        base_samples,
+        note_mapping,
+        target_notes,
+        wave_type,
+        args.start,
+        args.end,
+        args.max_error
+    )
+
+    defines_file = os.path.join(args.output_dir, f"{args.prefix}{wave_type}_defines.txt")
+    with open(defines_file, 'w', encoding='utf-8') as f:
+        f.write(defines)
+
+    print(f"定義ファイル: {defines_file}")
+
+    # サマリー
+    total_size = sum(s['size'] for s in base_samples)
+    print()
+    print(f"=== 生成完了 ===")
+    print(f"基本サンプル数: {len(base_samples)}")
+    print(f"合計サイズ: {total_size} bytes")
+    print(f"カバー音階数: {len(target_notes)}")
+
+    # 従来方式との比較（概算）
+    traditional_size = len(target_notes) * (total_size // len(base_samples))
+    print(f"（参考）従来方式推定サイズ: {traditional_size} bytes")
+    print(f"削減率: {100 * (1 - total_size / traditional_size):.1f}%")
+
+
+if __name__ == '__main__':
+    main()
