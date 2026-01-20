@@ -7,6 +7,7 @@
 """
 
 import os
+import sys
 import math
 import argparse
 from dpcm_generator import (
@@ -14,7 +15,10 @@ from dpcm_generator import (
     freq_from_note, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     note_to_semitone, semitone_to_note, generate_note_range,
-    SAMPLE_RATES_NTSC
+    SAMPLE_RATES_NTSC,
+    # バリデーション関数
+    validate_note_name, validate_positive_int, validate_non_negative_int,
+    validate_positive_float, validate_non_negative_float, validate_readable_file,
 )
 
 
@@ -199,91 +203,118 @@ def generate_sunsoft_samples(
     loop_match: bool = False,
     fit: bool = True,
     prefer_quality: bool = False
-) -> list[dict]:
+) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     基本サンプルファイル群を生成
 
     各サンプルは最高レート($F)で基本ノートを再生することを想定して生成
 
     Returns:
-        生成されたサンプル情報のリスト
+        (成功リスト, 失敗リスト)
+        成功リスト: 生成されたサンプル情報のリスト
+        失敗リスト: 失敗したノートと理由のタプル
     """
-    os.makedirs(output_dir, exist_ok=True)
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+    except PermissionError:
+        print(f"エラー: 出力ディレクトリの作成権限がありません: '{output_dir}'", file=sys.stderr)
+        return [], [(None, f"出力ディレクトリの作成権限がありません: '{output_dir}'")]
+    except OSError as e:
+        print(f"エラー: 出力ディレクトリの作成に失敗しました: '{output_dir}' ({e})", file=sys.stderr)
+        return [], [(None, f"出力ディレクトリの作成に失敗: {e}")]
+
     results = []
+    failures = []
 
     for base_note in base_notes:
-        target_freq = freq_from_note(base_note)
+        try:
+            target_freq = freq_from_note(base_note)
 
-        # fitモードで最適パラメータを探索（最高レート$F=15を想定）
-        if fit:
-            result = find_best_fit_params(
-                target_freq,
-                min_cycles=cycles,
-                max_cycles=max(cycles * 4, 64),
-                prefer_quality=prefer_quality,
-                min_rate_index=15  # 最高レートを使用
-            )
-            if result is None:
-                # フォールバック: min_rate_indexを緩和
+            # fitモードで最適パラメータを探索（最高レート$F=15を想定）
+            if fit:
                 result = find_best_fit_params(
                     target_freq,
                     min_cycles=cycles,
                     max_cycles=max(cycles * 4, 64),
                     prefer_quality=prefer_quality,
-                    min_rate_index=12
+                    min_rate_index=15  # 最高レートを使用
                 )
-            if result is None:
-                print(f"  {base_note}: スキップ（適切なパラメータなし）")
+                if result is None:
+                    # フォールバック: min_rate_indexを緩和
+                    result = find_best_fit_params(
+                        target_freq,
+                        min_cycles=cycles,
+                        max_cycles=max(cycles * 4, 64),
+                        prefer_quality=prefer_quality,
+                        min_rate_index=12
+                    )
+                if result is None:
+                    print(f"  {base_note}: スキップ（適切なパラメータなし）")
+                    failures.append((base_note, "適切なパラメータが見つかりません"))
+                    continue
+                sample_rate, rate_index, num_samples, num_cycles, total_samples = result
+            else:
+                # fitなしの場合は最高レートで固定計算
+                sample_rate = SAMPLE_RATES_NTSC[15]
+                num_samples = round(sample_rate / target_freq)
+                rate_index = 15
+                num_cycles = cycles
+                total_samples = num_samples * num_cycles
+
+            actual_freq = sample_rate / num_samples
+
+            # ファイル名（#を_sに置換）
+            safe_note = base_note.replace("#", "_s")
+            filename = f"{prefix}{wave_type}_{safe_note}.dmc"
+            filepath = os.path.join(output_dir, filename)
+
+            # 波形生成（1周期分）
+            if custom_waveform:
+                waveform_1cycle = resample_waveform(custom_waveform, num_samples)
+            else:
+                waveform_1cycle = generate_waveform(wave_type, num_samples)
+
+            # 音量調整
+            if volume != 1.0:
+                waveform_1cycle = adjust_volume(waveform_1cycle, volume)
+
+            # 複数周期に拡張
+            waveform = waveform_1cycle * num_cycles
+
+            # エンコード
+            dpcm_data = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
+
+            try:
+                with open(filepath, 'wb') as f:
+                    f.write(dpcm_data)
+            except PermissionError:
+                print(f"  {base_note}: 失敗（書き込み権限なし）")
+                failures.append((base_note, f"ファイル書き込み権限がありません: '{filepath}'"))
                 continue
-            sample_rate, rate_index, num_samples, num_cycles, total_samples = result
-        else:
-            # fitなしの場合は最高レートで固定計算
-            sample_rate = SAMPLE_RATES_NTSC[15]
-            num_samples = round(sample_rate / target_freq)
-            rate_index = 15
-            num_cycles = cycles
-            total_samples = num_samples * num_cycles
+            except IOError as e:
+                print(f"  {base_note}: 失敗（書き込みエラー）")
+                failures.append((base_note, f"ファイル書き込みエラー: {e}"))
+                continue
 
-        actual_freq = sample_rate / num_samples
+            results.append({
+                'note': base_note,
+                'filename': filename,
+                'rate_index': rate_index,
+                'samples_per_cycle': num_samples,
+                'cycles': num_cycles,
+                'size': len(dpcm_data),
+                'actual_freq': actual_freq,
+                'target_freq': target_freq,
+            })
 
-        # ファイル名（#を_sに置換）
-        safe_note = base_note.replace("#", "_s")
-        filename = f"{prefix}{wave_type}_{safe_note}.dmc"
-        filepath = os.path.join(output_dir, filename)
+            print(f"  基本サンプル {base_note}: {filename} (rate=${rate_index:X}, {len(dpcm_data)}bytes)")
 
-        # 波形生成（1周期分）
-        if custom_waveform:
-            waveform_1cycle = resample_waveform(custom_waveform, num_samples)
-        else:
-            waveform_1cycle = generate_waveform(wave_type, num_samples)
+        except Exception as e:
+            print(f"  {base_note}: 失敗（予期しないエラー）")
+            failures.append((base_note, str(e)))
+            continue
 
-        # 音量調整
-        if volume != 1.0:
-            waveform_1cycle = adjust_volume(waveform_1cycle, volume)
-
-        # 複数周期に拡張
-        waveform = waveform_1cycle * num_cycles
-
-        # エンコード
-        dpcm_data = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
-
-        with open(filepath, 'wb') as f:
-            f.write(dpcm_data)
-
-        results.append({
-            'note': base_note,
-            'filename': filename,
-            'rate_index': rate_index,
-            'samples_per_cycle': num_samples,
-            'cycles': num_cycles,
-            'size': len(dpcm_data),
-            'actual_freq': actual_freq,
-            'target_freq': target_freq,
-        })
-
-        print(f"  基本サンプル {base_note}: {filename} (rate=${rate_index:X}, {len(dpcm_data)}bytes)")
-
-    return results
+    return results, failures
 
 
 def generate_sunsoft_defines(
@@ -438,18 +469,22 @@ def main():
     wave_group = parser.add_mutually_exclusive_group(required=True)
     wave_group.add_argument('--wave', choices=['saw', 'triangle', 'sine', 'square', 'pulse25', 'pulse12'],
                            help='波形タイプ')
-    wave_group.add_argument('--fds', metavar='FILE', help='FDS波形ファイル')
+    wave_group.add_argument('--fds', metavar='FILE', type=validate_readable_file,
+                           help='FDS波形ファイル')
     wave_group.add_argument('--hex', metavar='STRING', help='16進数波形データ')
-    wave_group.add_argument('--wav', metavar='FILE', help='WAVファイル')
+    wave_group.add_argument('--wav', metavar='FILE', type=validate_readable_file,
+                           help='WAVファイル')
     wave_group.add_argument('--analyze-only', action='store_true',
                            help='分析のみ実行（サンプル生成なし）')
 
     # 音域オプション
-    parser.add_argument('--start', default='C2', help='開始ノート (デフォルト: C2)')
-    parser.add_argument('--end', default='F4', help='終了ノート (デフォルト: F4)')
+    parser.add_argument('--start', type=validate_note_name, default='C2',
+                       help='開始ノート (デフォルト: C2)')
+    parser.add_argument('--end', type=validate_note_name, default='F4',
+                       help='終了ノート (デフォルト: F4)')
 
     # 誤差オプション
-    parser.add_argument('--max-error', type=float, default=25.0,
+    parser.add_argument('--max-error', type=validate_positive_float, default=25.0,
                        help='許容誤差（セント）(デフォルト: 25.0)')
 
     # 出力オプション
@@ -461,9 +496,9 @@ def main():
     # サンプル生成オプション
     parser.add_argument('--fit', action='store_true',
                        help='fitモード（dPCM有効サンプル数に合わせる）')
-    parser.add_argument('--cycles', type=int, default=8,
+    parser.add_argument('--cycles', type=validate_positive_int, default=8,
                        help='周期数 (デフォルト: 8)')
-    parser.add_argument('--volume', '-v', type=float, default=1.0,
+    parser.add_argument('--volume', '-v', type=validate_non_negative_float, default=1.0,
                        help='音量 (0.0-1.0, デフォルト: 1.0)')
     parser.add_argument('--auto-start', action='store_true',
                        help='開始値を波形に合わせる')
@@ -474,7 +509,7 @@ def main():
     parser.add_argument('--size-priority', action='store_true',
                        help='サイズ優先モード（サンプル数を最小化、対象範囲外のサンプルも使用）')
     parser.add_argument('--dpcm-start-index',
-                       type=int,
+                       type=validate_non_negative_int,
                        default=0,
                        help='ppmck定義の連番開始番号（デフォルト: 0）')
     parser.add_argument('--dpcm-path',
@@ -492,22 +527,33 @@ def main():
         return
 
     # 波形タイプの決定
-    if args.wave:
-        wave_type = args.wave
-        custom_waveform = None
-    elif args.fds:
-        wave_type = os.path.splitext(os.path.basename(args.fds))[0]
-        with open(args.fds, 'r') as f:
-            custom_waveform = parse_fds_waveform(f.read())
-    elif args.hex:
-        wave_type = "hex"
-        custom_waveform = parse_hex_waveform(args.hex)
-    elif args.wav:
-        wave_type = os.path.splitext(os.path.basename(args.wav))[0]
-        custom_waveform, _ = load_wav_waveform(args.wav)
-    else:
-        parser.error('波形タイプを指定してください')
-        return
+    try:
+        if args.wave:
+            wave_type = args.wave
+            custom_waveform = None
+        elif args.fds:
+            wave_type = os.path.splitext(os.path.basename(args.fds))[0]
+            try:
+                with open(args.fds, 'r') as f:
+                    custom_waveform = parse_fds_waveform(f.read())
+            except IOError as e:
+                print(f"エラー: ファイルの読み込みに失敗しました: '{args.fds}' ({e})", file=sys.stderr)
+                sys.exit(1)
+        elif args.hex:
+            wave_type = "hex"
+            custom_waveform = parse_hex_waveform(args.hex)
+        elif args.wav:
+            wave_type = os.path.splitext(os.path.basename(args.wav))[0]
+            custom_waveform, _ = load_wav_waveform(args.wav)
+        else:
+            parser.error('波形タイプを指定してください')
+            return
+    except ValueError as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"=== サンソフトベース方式 dPCMサンプル生成 ===")
     print(f"波形: {wave_type}")
@@ -537,7 +583,7 @@ def main():
 
     # サンプル生成
     print("サンプル生成中...")
-    base_samples = generate_sunsoft_samples(
+    base_samples, failures = generate_sunsoft_samples(
         base_sample_notes,
         wave_type,
         args.output_dir,
@@ -551,6 +597,21 @@ def main():
         prefer_quality=args.prefer_quality
     )
     print()
+
+    # 失敗レポート
+    if failures:
+        print(f"=== 失敗したサンプル ({len(failures)}件) ===")
+        for note, reason in failures:
+            if note:
+                print(f"  {note}: {reason}")
+            else:
+                print(f"  {reason}")
+        print()
+
+    # 結果がない場合はエラー
+    if not base_samples:
+        print("生成されたサンプルがありません。", file=sys.stderr)
+        sys.exit(1)
 
     # 定義ファイル生成
     defines = generate_sunsoft_defines(
@@ -566,8 +627,15 @@ def main():
     )
 
     defines_file = os.path.join(args.output_dir, f"{args.prefix}{wave_type}_defines.txt")
-    with open(defines_file, 'w', encoding='utf-8') as f:
-        f.write(defines)
+    try:
+        with open(defines_file, 'w', encoding='utf-8') as f:
+            f.write(defines)
+    except PermissionError:
+        print(f"エラー: 定義ファイルへの書き込み権限がありません: '{defines_file}'", file=sys.stderr)
+        sys.exit(1)
+    except IOError as e:
+        print(f"エラー: 定義ファイルの書き込みに失敗しました: '{defines_file}' ({e})", file=sys.stderr)
+        sys.exit(1)
 
     print(f"定義ファイル: {defines_file}")
 
@@ -576,13 +644,17 @@ def main():
     print()
     print(f"=== 生成完了 ===")
     print(f"基本サンプル数: {len(base_samples)}")
+    if failures:
+        print(f"失敗: {len(failures)}件")
     print(f"合計サイズ: {total_size} bytes")
     print(f"カバー音階数: {len(target_notes)}")
 
     # 従来方式との比較（概算）
-    traditional_size = len(target_notes) * (total_size // len(base_samples))
-    print(f"（参考）従来方式推定サイズ: {traditional_size} bytes")
-    print(f"削減率: {100 * (1 - total_size / traditional_size):.1f}%")
+    if len(base_samples) > 0:
+        traditional_size = len(target_notes) * (total_size // len(base_samples))
+        print(f"（参考）従来方式推定サイズ: {traditional_size} bytes")
+        if traditional_size > 0:
+            print(f"削減率: {100 * (1 - total_size / traditional_size):.1f}%")
 
 
 if __name__ == '__main__':
