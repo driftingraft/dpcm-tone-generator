@@ -463,7 +463,7 @@ def main():
                        help='fitモード（dPCM有効サンプル数に合わせる）')
     parser.add_argument('--cycles', type=int, default=8,
                        help='周期数 (デフォルト: 8)')
-    parser.add_argument('--volume', type=float, default=1.0,
+    parser.add_argument('--volume', '-v', type=float, default=1.0,
                        help='音量 (0.0-1.0, デフォルト: 1.0)')
     parser.add_argument('--auto-start', action='store_true',
                        help='開始値を波形に合わせる')
@@ -513,6 +513,11 @@ def main():
     print(f"波形: {wave_type}")
     print(f"対象音域: {args.start} 〜 {args.end}")
     print(f"許容誤差: {args.max_error} cents")
+    if args.volume != 1.0:
+        if args.volume > 1.0:
+            print(f"音量: {args.volume:.0%}（クリッピングの可能性あり）")
+        else:
+            print(f"音量: {args.volume:.0%}")
     print()
 
     # 最小サンプルセットを計算
