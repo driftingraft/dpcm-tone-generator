@@ -10,12 +10,13 @@ import os
 import sys
 import math
 import argparse
+import wave
 from dpcm_generator import (
     generate_waveform, encode_dpcm, resample_waveform, adjust_volume,
     freq_from_note, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     note_to_semitone, semitone_to_note, generate_note_range,
-    generate_preview,
+    generate_preview, decode_dpcm,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_note_name, validate_positive_int, validate_non_negative_int,
@@ -402,6 +403,112 @@ def generate_sunsoft_defines(
     return "\n".join(lines)
 
 
+def generate_scale_preview(
+    target_notes: list[str],
+    note_mapping: dict[str, tuple[str, int, float]],
+    base_samples: list[dict],
+    output_dir: str,
+    output_filename: str = "scale_preview.wav",
+    duration: float = 0.5,
+    auto_start: bool = False
+) -> str:
+    """
+    音階を順番に鳴らすスケールプレビューWAVを生成
+
+    各ノートを指定した持続時間ずつ鳴らし、1つのWAVファイルとして出力する。
+
+    Args:
+        target_notes: 鳴らすノートのリスト（音階順）
+        note_mapping: {ノート名: (基本サンプルノート, レートインデックス, 誤差)}
+        base_samples: 生成された基本サンプル情報のリスト
+        output_dir: 出力ディレクトリ
+        output_filename: 出力ファイル名
+        duration: 各音の持続時間（秒）
+        auto_start: 開始値を自動設定するかどうか
+
+    Returns:
+        出力ファイルパス
+    """
+    # 出力サンプルレート（最高レートを使用）
+    output_sample_rate = int(round(SAMPLE_RATES_NTSC[15]))  # 33144 Hz
+
+    # 基本サンプルノートからファイル情報へのマッピング
+    base_note_to_info = {s['note']: s for s in base_samples}
+
+    all_samples = []
+
+    for note in target_notes:
+        if note not in note_mapping:
+            continue
+
+        base_note, rate_idx, _ = note_mapping[note]
+
+        if base_note not in base_note_to_info:
+            continue
+
+        sample_info = base_note_to_info[base_note]
+        filepath = os.path.join(output_dir, sample_info['filename'])
+
+        # dPCMファイルを読み込む
+        try:
+            with open(filepath, 'rb') as f:
+                dpcm_data = f.read()
+        except (IOError, FileNotFoundError):
+            continue
+
+        # このノート用のサンプルレート
+        note_sample_rate = SAMPLE_RATES_NTSC[rate_idx]
+
+        # dPCMをデコード
+        start_value = 64  # デフォルト開始値
+        decoded = decode_dpcm(dpcm_data, start_value)
+
+        # 持続時間分のサンプル数（このレートで）
+        samples_needed = int(note_sample_rate * duration)
+
+        # ループして必要なサンプル数を確保
+        if len(decoded) > 0:
+            note_samples = []
+            while len(note_samples) < samples_needed:
+                note_samples.extend(decoded)
+            note_samples = note_samples[:samples_needed]
+        else:
+            continue
+
+        # 出力サンプルレートにリサンプリング
+        output_samples_count = int(output_sample_rate * duration)
+        if len(note_samples) != output_samples_count:
+            # 線形補間でリサンプリング
+            resampled = []
+            for i in range(output_samples_count):
+                pos = i * len(note_samples) / output_samples_count
+                idx_low = int(pos)
+                idx_high = min(idx_low + 1, len(note_samples) - 1)
+                frac = pos - idx_low
+                value = note_samples[idx_low] * (1 - frac) + note_samples[idx_high] * frac
+                resampled.append(int(value))
+            note_samples = resampled
+
+        all_samples.extend(note_samples)
+
+    if not all_samples:
+        raise ValueError("スケールプレビューに含めるサンプルがありません")
+
+    # WAVファイルとして出力
+    output_path = os.path.join(output_dir, output_filename)
+
+    # 0-127を0-255（8bit unsigned）にスケーリング
+    wav_samples = bytes([min(255, s * 2) for s in all_samples])
+
+    with wave.open(output_path, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(1)  # 8bit
+        wf.setframerate(output_sample_rate)
+        wf.writeframes(wav_samples)
+
+    return output_path
+
+
 def analyze_coverage(
     start_note: str,
     end_note: str,
@@ -536,6 +643,13 @@ def main():
                        type=validate_positive_int,
                        default=4,
                        help='プレビューのループ回数（デフォルト: 4）')
+    parser.add_argument('--scale-preview',
+                       action='store_true',
+                       help='音階プレビューWAVを生成（全ノートを順番に再生）')
+    parser.add_argument('--scale-duration',
+                       type=validate_positive_float,
+                       default=0.5,
+                       help='音階プレビューの各音の持続時間（秒）（デフォルト: 0.5）')
 
     args = parser.parse_args()
 
@@ -660,6 +774,25 @@ def main():
         sys.exit(1)
 
     print(f"定義ファイル: {defines_file}")
+
+    # スケールプレビュー生成
+    if args.scale_preview:
+        try:
+            scale_preview_path = generate_scale_preview(
+                target_notes,
+                note_mapping,
+                base_samples,
+                args.output_dir,
+                output_filename=f"{args.prefix}{wave_type}_scale.wav",
+                duration=args.scale_duration,
+                auto_start=args.auto_start
+            )
+            total_duration = len(target_notes) * args.scale_duration
+            print(f"スケールプレビュー: {scale_preview_path} ({total_duration:.1f}秒)")
+        except ValueError as e:
+            print(f"スケールプレビュー生成失敗: {e}", file=sys.stderr)
+        except (PermissionError, IOError) as e:
+            print(f"スケールプレビュー書き込み失敗: {e}", file=sys.stderr)
 
     # サマリー
     total_size = sum(s['size'] for s in base_samples)
