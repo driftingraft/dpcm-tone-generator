@@ -488,8 +488,9 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
     if not auto_start and (start_value < 0 or start_value > 127):
         raise ValueError(f"開始値は0-127の範囲で指定してください: {start_value}")
 
-    # 0.0-1.0 を 0-127 にスケーリング
-    target_values = [int(s * 127) for s in samples]
+    # 0.0-1.0 を偶数値（0, 2, 4, ..., 126）にスケーリング
+    # dPCMは±2ステップで変化するため、偶数のみに統一することでパリティ不一致を防ぐ
+    target_values = [round(s * 63) * 2 for s in samples]
 
     # 自動開始値設定
     if auto_start and target_values:
