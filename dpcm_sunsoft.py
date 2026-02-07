@@ -208,7 +208,8 @@ def generate_sunsoft_samples(
     preview: bool = False,
     preview_loops: int = 4,
     raw_preview: bool = False,
-    raw_preview_loops: int = None
+    raw_preview_loops: int = None,
+    warmup: bool = False
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     基本サンプルファイル群を生成
@@ -288,11 +289,13 @@ def generate_sunsoft_samples(
             if volume != 1.0:
                 waveform_1cycle = adjust_volume(waveform_1cycle, volume)
 
-            # 複数周期に拡張
-            waveform = waveform_1cycle * num_cycles
+            # 複数周期に拡張（warmup有効時は+1周期）
+            extra_cycles = 1 if warmup else 0
+            waveform = waveform_1cycle * (num_cycles + extra_cycles)
 
             # エンコード
-            dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
+            warmup_count = num_samples if warmup else 0
+            dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start, warmup_samples=warmup_count)
 
             try:
                 with open(filepath, 'wb') as f:
@@ -644,6 +647,8 @@ def main():
                        help='開始値を波形に合わせる')
     parser.add_argument('--loop-match', action='store_true',
                        help='ループ時に開始値に戻るよう調整')
+    parser.add_argument('--warmup', action='store_true',
+                       help='最初の1周期をウォームアップとして使用し、安定した部分のみを出力')
     parser.add_argument('--prefer-quality', action='store_true',
                        help='音質優先モード（高サンプルレート優先、レート選択でも高レートを優先）')
     parser.add_argument('--size-priority', action='store_true',
@@ -724,6 +729,8 @@ def main():
             print(f"音量: {args.volume:.0%}（クリッピングの可能性あり）")
         else:
             print(f"音量: {args.volume:.0%}")
+    if args.warmup:
+        print(f"ウォームアップ: 有効（1周期分をスキップ）")
     print()
 
     # 最小サンプルセットを計算
@@ -758,7 +765,8 @@ def main():
         preview=args.preview,
         preview_loops=args.preview_loops,
         raw_preview=args.raw_preview,
-        raw_preview_loops=args.raw_preview_loops
+        raw_preview_loops=args.raw_preview_loops,
+        warmup=args.warmup
     )
     print()
 

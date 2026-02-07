@@ -28,7 +28,7 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
@@ -94,11 +94,13 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
             if volume != 1.0:
                 waveform_1cycle = adjust_volume(waveform_1cycle, volume)
 
-            # 複数周期に拡張
-            waveform = waveform_1cycle * num_cycles
+            # 複数周期に拡張（warmup有効時は+1周期）
+            extra_cycles = 1 if warmup else 0
+            waveform = waveform_1cycle * (num_cycles + extra_cycles)
 
             # エンコード
-            dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
+            warmup_count = num_samples if warmup else 0
+            dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start, warmup_samples=warmup_count)
 
             try:
                 with open(filepath, 'wb') as f:
@@ -219,6 +221,9 @@ def main():
     parser.add_argument('--loop-match', '-l',
                         action='store_true',
                         help='ループ終端のDC値を開始値に合わせる')
+    parser.add_argument('--warmup',
+                        action='store_true',
+                        help='最初の1周期をウォームアップとして使用し、安定した部分のみを出力')
     parser.add_argument('--fit',
                         action='store_true',
                         help='サンプル数をdPCM有効長(8+128n)にぴったり合わせる')
@@ -329,6 +334,8 @@ def main():
         print(f"開始値自動設定: 有効")
     if args.loop_match:
         print(f"ループマッチ: 有効")
+    if args.warmup:
+        print(f"ウォームアップ: 有効（1周期分をスキップ）")
     print()
 
     results, failures = generate_note_set(wave_type, args.output_dir, custom_waveform=custom_waveform,
@@ -336,7 +343,8 @@ def main():
                                  loop_match=args.loop_match, fit=args.fit, prefer_quality=args.quality,
                                  min_rate_index=args.min_rate_index or 0,
                                  preview=args.preview, preview_loops=args.preview_loops,
-                                 raw_preview=args.raw_preview, raw_preview_loops=args.raw_preview_loops)
+                                 raw_preview=args.raw_preview, raw_preview_loops=args.raw_preview_loops,
+                                 warmup=args.warmup)
 
     # 失敗レポート
     if failures:

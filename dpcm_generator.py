@@ -466,7 +466,7 @@ def find_nearest_valid_sample_count(target: int) -> tuple[int, int]:
     return count, count // 8
 
 
-def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = False, auto_start: bool = False) -> tuple[bytes, int]:
+def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = False, auto_start: bool = False, warmup_samples: int = 0) -> tuple[bytes, int]:
     """
     サンプル列をdPCMにエンコード
 
@@ -481,6 +481,7 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
         start_value: 開始時のDC値（0〜127）
         loop_match: Trueの場合、終端値が開始値に戻るよう調整
         auto_start: Trueの場合、波形の最初の値を開始値として使用
+        warmup_samples: ウォームアップ用サンプル数（この数だけスキップして安定部分のみ出力）
 
     Returns:
         (dpcm_data, actual_start_value): エンコードされたデータと実際に使用した開始値
@@ -495,8 +496,26 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
     # dPCMは±2ステップで変化するため、偶数のみに統一することでパリティ不一致を防ぐ
     target_values = [round(s * 63) * 2 for s in samples]
 
-    # 自動開始値設定
-    if auto_start and target_values:
+    # ウォームアップ処理: 最初のwarmup_samplesを助走として使い、終了時の状態を開始値にする
+    if warmup_samples > 0 and len(target_values) > warmup_samples:
+        warmup_targets = target_values[:warmup_samples]
+        current = start_value
+        # auto_startの場合、ウォームアップ開始値も波形に合わせる
+        if auto_start and warmup_targets:
+            first_target = warmup_targets[0]
+            current = min(126, first_target + 2)
+        # ウォームアップ部分をシミュレート
+        for target in warmup_targets:
+            if target > current:
+                current = min(127, current + 2)
+            else:
+                current = max(0, current - 2)
+        # ウォームアップ後の状態を開始値として使用
+        start_value = current
+        # ウォームアップ部分を除去
+        target_values = target_values[warmup_samples:]
+    elif auto_start and target_values:
+        # ウォームアップなしの場合の従来の自動開始値設定
         # デコード時に最初のサンプルがfirst_targetになるよう+2補正
         # dPCMでは最初のサンプルが start_value ± 2 になるため
         first_target = target_values[0]
@@ -916,6 +935,9 @@ def main():
     parser.add_argument('--loop-match', '-l',
                         action='store_true',
                         help='ループ終端のDC値を開始値に合わせる')
+    parser.add_argument('--warmup',
+                        action='store_true',
+                        help='最初の1周期をウォームアップとして使用し、安定した部分のみを出力')
     parser.add_argument('--fit',
                         action='store_true',
                         help='サンプル数をdPCM有効長(8+128n)にぴったり合わせる（周波数微調整）')
@@ -1072,8 +1094,10 @@ def main():
         print(f"開始値自動設定: 有効")
     if args.loop_match:
         print(f"ループマッチ  : 有効")
+    if args.warmup:
+        print(f"ウォームアップ: 有効（1周期分をスキップ）")
     print()
-    
+
     # 波形生成（1周期分）
     if custom_waveform:
         # カスタム波形をリサンプリング
@@ -1096,16 +1120,18 @@ def main():
         else:
             print(f"音量調整: {args.volume:.0%}")
     
-    # 複数周期分に拡張
-    waveform = waveform_1cycle * num_cycles
-    
+    # 複数周期分に拡張（warmup有効時は+1周期）
+    extra_cycles = 1 if args.warmup else 0
+    waveform = waveform_1cycle * (num_cycles + extra_cycles)
+
     if args.show_wave:
         print()
         print("=== 出力波形 ===")
         print(visualize_waveform(waveform))
-    
+
     # dPCMエンコード
-    dpcm_data, actual_start = encode_dpcm(waveform, loop_match=args.loop_match, auto_start=args.auto_start)
+    warmup_count = num_samples if args.warmup else 0
+    dpcm_data, actual_start = encode_dpcm(waveform, loop_match=args.loop_match, auto_start=args.auto_start, warmup_samples=warmup_count)
 
     # ファイル出力
     try:
