@@ -235,13 +235,16 @@ def generate_sunsoft_samples(
             target_freq = freq_from_note(base_note)
 
             # fitモードで最適パラメータを探索（最高レート$F=15を想定）
+            # loop_matchが有効な場合、余地を確保
+            loop_reserve = 64 if loop_match else 0
             if fit:
                 result = find_best_fit_params(
                     target_freq,
                     min_cycles=cycles,
                     max_cycles=max(cycles * 4, 64),
                     prefer_quality=prefer_quality,
-                    min_rate_index=15  # 最高レートを使用
+                    min_rate_index=15,  # 最高レートを使用
+                    loop_match_reserve=loop_reserve
                 )
                 if result is None:
                     # フォールバック: min_rate_indexを緩和
@@ -250,7 +253,8 @@ def generate_sunsoft_samples(
                         min_cycles=cycles,
                         max_cycles=max(cycles * 4, 64),
                         prefer_quality=prefer_quality,
-                        min_rate_index=12
+                        min_rate_index=12,
+                        loop_match_reserve=loop_reserve
                     )
                 if result is None:
                     print(f"  {base_note}: スキップ（適切なパラメータなし）")
@@ -286,7 +290,7 @@ def generate_sunsoft_samples(
             waveform = waveform_1cycle * num_cycles
 
             # エンコード
-            dpcm_data = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
+            dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
 
             try:
                 with open(filepath, 'wb') as f:
@@ -302,7 +306,7 @@ def generate_sunsoft_samples(
 
             # プレビュー生成
             if preview:
-                preview_start = int(waveform_1cycle[0] * 127) if auto_start else 64
+                preview_start = actual_start
                 preview_path = os.path.splitext(filepath)[0] + ".wav"
                 try:
                     generate_preview(dpcm_data, sample_rate, preview_path,
@@ -319,6 +323,7 @@ def generate_sunsoft_samples(
                 'size': len(dpcm_data),
                 'actual_freq': actual_freq,
                 'target_freq': target_freq,
+                'start_value': actual_start,
             })
 
             print(f"  基本サンプル {base_note}: {filename} (rate=${rate_index:X}, {len(dpcm_data)}bytes)")
@@ -460,7 +465,11 @@ def generate_scale_preview(
         note_sample_rate = SAMPLE_RATES_NTSC[rate_idx]
 
         # dPCMをデコード
-        start_value = 64  # デフォルト開始値
+        # auto_startの場合、エンコード時に使用した開始値を使う
+        if auto_start and 'start_value' in sample_info:
+            start_value = sample_info['start_value']
+        else:
+            start_value = 64
         decoded = decode_dpcm(dpcm_data, start_value)
 
         # 持続時間分のサンプル数（このレートで）

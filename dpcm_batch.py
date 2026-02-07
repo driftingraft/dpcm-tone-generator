@@ -56,10 +56,13 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
 
             if fit:
                 # fitモード: 有効なdPCMサンプル数にぴったり合わせる
+                # loop_matchが有効な場合、余地を確保
+                loop_reserve = 64 if loop_match else 0
                 result = find_best_fit_params(target_freq, min_cycles=cycles,
                                               max_cycles=max(cycles * 4, 64),
                                               prefer_quality=prefer_quality,
-                                              min_rate_index=min_rate_index)
+                                              min_rate_index=min_rate_index,
+                                              loop_match_reserve=loop_reserve)
                 if result is None:
                     print(f"  {note}: スキップ（適切なパラメータなし）")
                     failures.append((note, "適切なパラメータが見つかりません"))
@@ -95,7 +98,7 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
             waveform = waveform_1cycle * num_cycles
 
             # エンコード
-            dpcm_data = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
+            dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match, auto_start=auto_start)
 
             try:
                 with open(filepath, 'wb') as f:
@@ -111,7 +114,7 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
 
             # プレビュー生成
             if preview:
-                preview_start = int(waveform_1cycle[0] * 127) if auto_start else 64
+                preview_start = actual_start
                 preview_path = os.path.splitext(filepath)[0] + ".wav"
                 try:
                     generate_preview(dpcm_data, sample_rate, preview_path,

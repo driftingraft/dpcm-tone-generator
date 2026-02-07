@@ -466,7 +466,7 @@ def find_nearest_valid_sample_count(target: int) -> tuple[int, int]:
     return count, count // 8
 
 
-def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = False, auto_start: bool = False) -> bytes:
+def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = False, auto_start: bool = False) -> tuple[bytes, int]:
     """
     サンプル列をdPCMにエンコード
 
@@ -482,6 +482,9 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
         loop_match: Trueの場合、終端値が開始値に戻るよう調整
         auto_start: Trueの場合、波形の最初の値を開始値として使用
 
+    Returns:
+        (dpcm_data, actual_start_value): エンコードされたデータと実際に使用した開始値
+
     Raises:
         ValueError: start_valueが0-127の範囲外の場合
     """
@@ -494,7 +497,10 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
 
     # 自動開始値設定
     if auto_start and target_values:
-        start_value = target_values[0]
+        # デコード時に最初のサンプルがfirst_targetになるよう+2補正
+        # dPCMでは最初のサンプルが start_value ± 2 になるため
+        first_target = target_values[0]
+        start_value = min(126, first_target + 2)  # 上限126（偶数維持）
 
     current = start_value
     bits = []
@@ -549,7 +555,7 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
                 byte |= (1 << j)
         output.append(byte)
     
-    return bytes(output)
+    return bytes(output), start_value
 
 
 def decode_dpcm(dpcm_data: bytes, start_value: int = 64) -> list[int]:
@@ -733,7 +739,7 @@ def find_best_sample_rate(target_freq: float, min_samples: int = 32) -> tuple[fl
     return best_rate, best_index, best_samples
 
 
-def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: int = 64, max_cents_error: float = 15.0, prefer_quality: bool = False, min_rate_index: int = 0) -> tuple[float, int, int, int, int]:
+def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: int = 64, max_cents_error: float = 15.0, prefer_quality: bool = False, min_rate_index: int = 0, loop_match_reserve: int = 0) -> tuple[float, int, int, int, int]:
     """
     目標周波数に対して、有効なdPCMサンプル数(8+128n)にぴったり収まる
     最適なサンプルレート・周期数の組み合わせを見つける
@@ -747,9 +753,11 @@ def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: in
         max_cents_error: 許容する最大誤差（セント）
         prefer_quality: Trueの場合、サイズよりサンプルレートを優先（高音質）
         min_rate_index: サンプルレートの下限インデックス（0-15）
+        loop_match_reserve: ループマッチ用に確保するサンプル数（0-64）
 
     Returns:
-        (sample_rate, rate_index, samples_per_cycle, num_cycles, total_samples)
+        (sample_rate, rate_index, samples_per_cycle, num_cycles, wave_samples)
+        wave_samples: 波形用サンプル数（有効サンプル数 - loop_match_reserve）
     """
     valid_counts = get_valid_dpcm_sample_counts()
 
@@ -772,11 +780,14 @@ def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: in
             
             # この周期数で割り切れる有効サンプル数を探す
             for valid_total in valid_counts:
-                # 周期数で割り切れない場合はスキップ
-                if valid_total % num_cycles != 0:
+                # ループマッチ余地を引いた値が周期数で割り切れるかチェック
+                wave_samples = valid_total - loop_match_reserve
+                if wave_samples <= 0:
                     continue
-                
-                actual_samples_per_cycle = valid_total // num_cycles
+                if wave_samples % num_cycles != 0:
+                    continue
+
+                actual_samples_per_cycle = wave_samples // num_cycles
                 
                 # 1周期あたりのサンプル数が少なすぎる場合はスキップ
                 if actual_samples_per_cycle < 16:
@@ -791,6 +802,7 @@ def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: in
                     'samples_per_cycle': actual_samples_per_cycle,
                     'num_cycles': num_cycles,
                     'total_samples': valid_total,
+                    'wave_samples': wave_samples,
                     'cents_error': cents_error,
                     'abs_cents_error': abs(cents_error),
                 })
@@ -812,8 +824,8 @@ def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: in
         # 許容誤差内がなければ、誤差最小を選ぶ
         best = min(candidates, key=lambda c: c['abs_cents_error'])
     
-    return (best['rate'], best['rate_idx'], best['samples_per_cycle'], 
-            best['num_cycles'], best['total_samples'])
+    return (best['rate'], best['rate_idx'], best['samples_per_cycle'],
+            best['num_cycles'], best['wave_samples'])
 
 
 def main():
@@ -958,10 +970,13 @@ def main():
     
     if fit_mode:
         # fitモード: 有効なdPCMサンプル数にぴったり合わせる
+        # loop_matchが有効な場合、余地を確保
+        loop_reserve = 64 if args.loop_match else 0
         result = find_best_fit_params(target_freq, min_cycles=args.cycles,
                                        max_cycles=max(args.cycles * 4, 64),
                                        prefer_quality=args.quality,
-                                       min_rate_index=args.min_rate_index or 0)
+                                       min_rate_index=args.min_rate_index or 0,
+                                       loop_match_reserve=loop_reserve)
         if result is None:
             print("エラー: 適切なパラメータが見つかりませんでした")
             return
@@ -1044,7 +1059,7 @@ def main():
         print(visualize_waveform(waveform))
     
     # dPCMエンコード
-    dpcm_data = encode_dpcm(waveform, loop_match=args.loop_match, auto_start=args.auto_start)
+    dpcm_data, actual_start = encode_dpcm(waveform, loop_match=args.loop_match, auto_start=args.auto_start)
 
     # ファイル出力
     try:
@@ -1061,11 +1076,8 @@ def main():
 
     # プレビュー生成
     if args.preview:
-        # 開始値を決定
-        if args.auto_start and waveform:
-            preview_start = int(waveform[0] * 127)
-        else:
-            preview_start = 64
+        # 開始値はエンコード時に使用した値をそのまま使う
+        preview_start = actual_start
 
         # 出力パスから.wavパスを生成
         base_path = os.path.splitext(args.output)[0]
