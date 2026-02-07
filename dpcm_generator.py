@@ -622,6 +622,46 @@ def generate_preview(dpcm_data: bytes, sample_rate: float, output_path: str,
     samples_to_wav(samples, int(round(sample_rate)), output_path, loops)
 
 
+def generate_raw_preview(waveform: list[float], sample_rate: float, output_path: str,
+                         loops: int = 1, bit_depth: int = 16) -> None:
+    """
+    エンコード前の浮動小数点波形をWAVファイルとして出力
+
+    Args:
+        waveform: 0.0〜1.0の波形サンプル列
+        sample_rate: サンプルレート（Hz）
+        output_path: 出力WAVファイルパス
+        loops: ループ回数
+        bit_depth: ビット深度（8または16、デフォルト16）
+
+    Raises:
+        ValueError: bit_depthが8または16でない場合
+    """
+    if bit_depth not in (8, 16):
+        raise ValueError(f"ビット深度は8または16を指定してください: {bit_depth}")
+
+    # ループ分拡張
+    all_samples = waveform * loops
+
+    with wave.open(output_path, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setframerate(int(round(sample_rate)))
+
+        if bit_depth == 16:
+            wf.setsampwidth(2)
+            # 0.0〜1.0 を -32768〜32767 にスケーリング
+            wav_data = b''.join(
+                struct.pack('<h', max(-32768, min(32767, int((s - 0.5) * 65535))))
+                for s in all_samples
+            )
+        else:  # 8bit
+            wf.setsampwidth(1)
+            # 0.0〜1.0 を 0〜255 にスケーリング
+            wav_data = bytes(max(0, min(255, int(s * 255))) for s in all_samples)
+
+        wf.writeframes(wav_data)
+
+
 def calculate_samples_for_note(note_freq: float, sample_rate: float) -> int:
     """
     指定周波数の音を出すために必要なサンプル数を計算
@@ -906,6 +946,12 @@ def main():
                         type=validate_positive_int,
                         default=4,
                         help='プレビューのループ回数（デフォルト: 4）')
+    parser.add_argument('--raw-preview',
+                        action='store_true',
+                        help='エンコード前のWAVプレビューを生成（出力先: {output}_raw.wav）')
+    parser.add_argument('--raw-preview-loops',
+                        type=validate_positive_int,
+                        help='エンコード前プレビューのループ回数（デフォルト: --preview-loopsと同値）')
 
     args = parser.parse_args()
     
@@ -1091,6 +1137,20 @@ def main():
             print(f"エラー: プレビューファイルへの書き込み権限がありません: '{preview_path}'", file=sys.stderr)
         except IOError as e:
             print(f"エラー: プレビューファイルの書き込みに失敗しました: '{preview_path}' ({e})", file=sys.stderr)
+
+    # エンコード前プレビュー生成
+    if args.raw_preview:
+        base_path = os.path.splitext(args.output)[0]
+        raw_preview_path = f"{base_path}_raw.wav"
+        raw_loops = args.raw_preview_loops if args.raw_preview_loops else args.preview_loops
+
+        try:
+            generate_raw_preview(waveform, sample_rate, raw_preview_path, loops=raw_loops)
+            print(f"エンコード前プレビュー: {raw_preview_path} ({raw_loops}ループ)")
+        except PermissionError:
+            print(f"エラー: エンコード前プレビューファイルへの書き込み権限がありません: '{raw_preview_path}'", file=sys.stderr)
+        except IOError as e:
+            print(f"エラー: エンコード前プレビューファイルの書き込みに失敗しました: '{raw_preview_path}' ({e})", file=sys.stderr)
 
     print()
     print("=== ppmckでの使用例 ===")

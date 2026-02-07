@@ -11,7 +11,7 @@ from dpcm_generator import (
     freq_from_note, find_best_sample_rate, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     get_valid_dpcm_sample_counts, find_nearest_valid_sample_count,
-    generate_preview,
+    generate_preview, generate_raw_preview,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_positive_int, validate_non_negative_int,
@@ -28,7 +28,7 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
@@ -121,6 +121,15 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
                                     loops=preview_loops, start_value=preview_start)
                 except (PermissionError, IOError) as e:
                     print(f"  {note}: プレビュー生成失敗 ({e})")
+
+            # エンコード前プレビュー生成
+            if raw_preview:
+                raw_preview_path = os.path.splitext(filepath)[0] + "_raw.wav"
+                raw_loops = raw_preview_loops if raw_preview_loops else preview_loops
+                try:
+                    generate_raw_preview(waveform, sample_rate, raw_preview_path, loops=raw_loops)
+                except (PermissionError, IOError) as e:
+                    print(f"  {note}: エンコード前プレビュー生成失敗 ({e})")
 
             results.append({
                 'note': note,
@@ -237,6 +246,12 @@ def main():
                         type=validate_positive_int,
                         default=4,
                         help='プレビューのループ回数（デフォルト: 4）')
+    parser.add_argument('--raw-preview',
+                        action='store_true',
+                        help='エンコード前のWAVプレビューを生成（各dmcと同名の_raw.wav）')
+    parser.add_argument('--raw-preview-loops',
+                        type=validate_positive_int,
+                        help='エンコード前プレビューのループ回数（デフォルト: --preview-loopsと同値）')
 
     args = parser.parse_args()
 
@@ -320,7 +335,8 @@ def main():
                                  cycles=args.cycles, volume=args.volume, auto_start=args.auto_start,
                                  loop_match=args.loop_match, fit=args.fit, prefer_quality=args.quality,
                                  min_rate_index=args.min_rate_index or 0,
-                                 preview=args.preview, preview_loops=args.preview_loops)
+                                 preview=args.preview, preview_loops=args.preview_loops,
+                                 raw_preview=args.raw_preview, raw_preview_loops=args.raw_preview_loops)
 
     # 失敗レポート
     if failures:

@@ -16,7 +16,7 @@ from dpcm_generator import (
     freq_from_note, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     note_to_semitone, semitone_to_note, generate_note_range,
-    generate_preview, decode_dpcm,
+    generate_preview, generate_raw_preview, decode_dpcm,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_note_name, validate_positive_int, validate_non_negative_int,
@@ -206,7 +206,9 @@ def generate_sunsoft_samples(
     fit: bool = True,
     prefer_quality: bool = False,
     preview: bool = False,
-    preview_loops: int = 4
+    preview_loops: int = 4,
+    raw_preview: bool = False,
+    raw_preview_loops: int = None
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     基本サンプルファイル群を生成
@@ -313,6 +315,15 @@ def generate_sunsoft_samples(
                                     loops=preview_loops, start_value=preview_start)
                 except (PermissionError, IOError) as e:
                     print(f"  {base_note}: プレビュー生成失敗 ({e})")
+
+            # エンコード前プレビュー生成
+            if raw_preview:
+                raw_preview_path = os.path.splitext(filepath)[0] + "_raw.wav"
+                raw_loops = raw_preview_loops if raw_preview_loops else preview_loops
+                try:
+                    generate_raw_preview(waveform, sample_rate, raw_preview_path, loops=raw_loops)
+                except (PermissionError, IOError) as e:
+                    print(f"  {base_note}: エンコード前プレビュー生成失敗 ({e})")
 
             results.append({
                 'note': base_note,
@@ -652,6 +663,12 @@ def main():
                        type=validate_positive_int,
                        default=4,
                        help='プレビューのループ回数（デフォルト: 4）')
+    parser.add_argument('--raw-preview',
+                       action='store_true',
+                       help='エンコード前のWAVプレビューを生成（各dmcと同名の_raw.wav）')
+    parser.add_argument('--raw-preview-loops',
+                       type=validate_positive_int,
+                       help='エンコード前プレビューのループ回数（デフォルト: --preview-loopsと同値）')
     parser.add_argument('--scale-preview',
                        action='store_true',
                        help='音階プレビューWAVを生成（全ノートを順番に再生）')
@@ -739,7 +756,9 @@ def main():
         fit=args.fit,
         prefer_quality=args.prefer_quality,
         preview=args.preview,
-        preview_loops=args.preview_loops
+        preview_loops=args.preview_loops,
+        raw_preview=args.raw_preview,
+        raw_preview_loops=args.raw_preview_loops
     )
     print()
 
