@@ -11,6 +11,7 @@ from dpcm_generator import (
     freq_from_note, find_best_sample_rate, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     get_valid_dpcm_sample_counts, find_nearest_valid_sample_count,
+    generate_preview,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_positive_int, validate_non_negative_int,
@@ -27,7 +28,7 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
@@ -107,6 +108,16 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
                 print(f"  {note}: 失敗（書き込みエラー）")
                 failures.append((note, f"ファイル書き込みエラー: {e}"))
                 continue
+
+            # プレビュー生成
+            if preview:
+                preview_start = int(waveform_1cycle[0] * 127) if auto_start else 64
+                preview_path = os.path.splitext(filepath)[0] + ".wav"
+                try:
+                    generate_preview(dpcm_data, sample_rate, preview_path,
+                                    loops=preview_loops, start_value=preview_start)
+                except (PermissionError, IOError) as e:
+                    print(f"  {note}: プレビュー生成失敗 ({e})")
 
             results.append({
                 'note': note,
@@ -216,6 +227,13 @@ def main():
                         type=str,
                         default='',
                         help='ppmck定義でのdmcファイルパス（例: "D:\\myFolder\\"）')
+    parser.add_argument('--preview', '-p',
+                        action='store_true',
+                        help='プレビューWAVを生成（各dmcと同名の.wav）')
+    parser.add_argument('--preview-loops',
+                        type=validate_positive_int,
+                        default=4,
+                        help='プレビューのループ回数（デフォルト: 4）')
 
     args = parser.parse_args()
 
@@ -298,7 +316,8 @@ def main():
     results, failures = generate_note_set(wave_type, args.output_dir, custom_waveform=custom_waveform,
                                  cycles=args.cycles, volume=args.volume, auto_start=args.auto_start,
                                  loop_match=args.loop_match, fit=args.fit, prefer_quality=args.quality,
-                                 min_rate_index=args.min_rate_index or 0)
+                                 min_rate_index=args.min_rate_index or 0,
+                                 preview=args.preview, preview_loops=args.preview_loops)
 
     # 失敗レポート
     if failures:

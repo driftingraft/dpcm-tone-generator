@@ -15,6 +15,7 @@ from dpcm_generator import (
     freq_from_note, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     note_to_semitone, semitone_to_note, generate_note_range,
+    generate_preview,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_note_name, validate_positive_int, validate_non_negative_int,
@@ -202,7 +203,9 @@ def generate_sunsoft_samples(
     auto_start: bool = False,
     loop_match: bool = False,
     fit: bool = True,
-    prefer_quality: bool = False
+    prefer_quality: bool = False,
+    preview: bool = False,
+    preview_loops: int = 4
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     基本サンプルファイル群を生成
@@ -295,6 +298,16 @@ def generate_sunsoft_samples(
                 print(f"  {base_note}: 失敗（書き込みエラー）")
                 failures.append((base_note, f"ファイル書き込みエラー: {e}"))
                 continue
+
+            # プレビュー生成
+            if preview:
+                preview_start = int(waveform_1cycle[0] * 127) if auto_start else 64
+                preview_path = os.path.splitext(filepath)[0] + ".wav"
+                try:
+                    generate_preview(dpcm_data, sample_rate, preview_path,
+                                    loops=preview_loops, start_value=preview_start)
+                except (PermissionError, IOError) as e:
+                    print(f"  {base_note}: プレビュー生成失敗 ({e})")
 
             results.append({
                 'note': base_note,
@@ -516,6 +529,13 @@ def main():
                        type=str,
                        default='',
                        help='ppmck定義でのdmcファイルパス（例: "D:\\myFolder\\"）')
+    parser.add_argument('--preview', '-p',
+                       action='store_true',
+                       help='プレビューWAVを生成（各dmcと同名の.wav）')
+    parser.add_argument('--preview-loops',
+                       type=validate_positive_int,
+                       default=4,
+                       help='プレビューのループ回数（デフォルト: 4）')
 
     args = parser.parse_args()
 
@@ -594,7 +614,9 @@ def main():
         auto_start=args.auto_start,
         loop_match=args.loop_match,
         fit=args.fit,
-        prefer_quality=args.prefer_quality
+        prefer_quality=args.prefer_quality,
+        preview=args.preview,
+        preview_loops=args.preview_loops
     )
     print()
 

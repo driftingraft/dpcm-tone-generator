@@ -538,6 +538,70 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
     return bytes(output)
 
 
+def decode_dpcm(dpcm_data: bytes, start_value: int = 64) -> list[int]:
+    """
+    dPCMデータを7bit PCMサンプル列にデコード
+
+    Args:
+        dpcm_data: dPCMエンコードされたバイト列
+        start_value: 開始時のDC値（0〜127）
+
+    Returns:
+        0〜127の範囲のPCMサンプル列
+    """
+    current = start_value
+    samples = []
+
+    for byte in dpcm_data:
+        for bit in range(8):
+            if byte & (1 << bit):
+                current = min(127, current + 2)
+            else:
+                current = max(0, current - 2)
+            samples.append(current)
+
+    return samples
+
+
+def samples_to_wav(samples: list[int], sample_rate: int, output_path: str, loops: int = 1) -> None:
+    """
+    サンプル列をWAVファイルとして出力（8bit/モノラル）
+
+    Args:
+        samples: 0〜127の範囲のPCMサンプル列
+        sample_rate: サンプルレート（Hz）
+        output_path: 出力ファイルパス
+        loops: ループ回数
+    """
+    # ループ分拡張
+    all_samples = samples * loops
+
+    # 0-127を0-255（8bit unsigned）にスケーリング
+    wav_samples = bytes([min(255, s * 2) for s in all_samples])
+
+    with wave.open(output_path, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(1)  # 8bit
+        wf.setframerate(sample_rate)
+        wf.writeframes(wav_samples)
+
+
+def generate_preview(dpcm_data: bytes, sample_rate: float, output_path: str,
+                    loops: int = 1, start_value: int = 64) -> None:
+    """
+    dPCMデータからWAVプレビューを生成
+
+    Args:
+        dpcm_data: dPCMエンコードされたバイト列
+        sample_rate: サンプルレート（Hz）
+        output_path: 出力WAVファイルパス
+        loops: ループ回数
+        start_value: デコード開始値
+    """
+    samples = decode_dpcm(dpcm_data, start_value)
+    samples_to_wav(samples, int(round(sample_rate)), output_path, loops)
+
+
 def calculate_samples_for_note(note_freq: float, sample_rate: float) -> int:
     """
     指定周波数の音を出すために必要なサンプル数を計算
@@ -809,6 +873,13 @@ def main():
                         type=str,
                         default='',
                         help='ppmck定義でのdmcファイルパス（例: "D:\\myFolder\\"）')
+    parser.add_argument('--preview', '-p',
+                        action='store_true',
+                        help='プレビューWAVを生成（出力先: {output}.wav）')
+    parser.add_argument('--preview-loops',
+                        type=validate_positive_int,
+                        default=4,
+                        help='プレビューのループ回数（デフォルト: 4）')
 
     args = parser.parse_args()
     
@@ -973,6 +1044,28 @@ def main():
         sys.exit(1)
 
     print(f"出力完了: {args.output}")
+
+    # プレビュー生成
+    if args.preview:
+        # 開始値を決定
+        if args.auto_start and waveform:
+            preview_start = int(waveform[0] * 127)
+        else:
+            preview_start = 64
+
+        # 出力パスから.wavパスを生成
+        base_path = os.path.splitext(args.output)[0]
+        preview_path = f"{base_path}.wav"
+
+        try:
+            generate_preview(dpcm_data, sample_rate, preview_path,
+                            loops=args.preview_loops, start_value=preview_start)
+            print(f"プレビュー: {preview_path} ({args.preview_loops}ループ)")
+        except PermissionError:
+            print(f"エラー: プレビューファイルへの書き込み権限がありません: '{preview_path}'", file=sys.stderr)
+        except IOError as e:
+            print(f"エラー: プレビューファイルの書き込みに失敗しました: '{preview_path}' ({e})", file=sys.stderr)
+
     print()
     print("=== ppmckでの使用例 ===")
     filepath = f"{args.dpcm_path}{args.output}"
