@@ -114,7 +114,8 @@ def find_minimum_sample_set(
     end_note: str,
     max_cents_error: float = 25.0,
     prefer_higher_rate: bool = False,
-    prefer_quality_samples: bool = True
+    prefer_quality_samples: bool = True,
+    cycles: int = 8
 ) -> tuple[list[str], dict[str, tuple[str, int, float]]]:
     """
     指定音域をカバーする最小限の基本サンプルセットを計算（貪欲法）
@@ -126,6 +127,7 @@ def find_minimum_sample_set(
         prefer_higher_rate: Trueの場合、許容誤差内で最高レートを優先
         prefer_quality_samples: Trueの場合、対象範囲内のサンプルを優先（音質優先）
                                 Falseの場合、上に拡張した範囲も含める（サイズ優先）
+        cycles: 波形の周期数（find_best_fit_paramsのmin_cyclesに使用）
 
     Returns:
         (基本サンプルノートのリスト, ノートマッピング辞書)
@@ -147,6 +149,33 @@ def find_minimum_sample_set(
         # より少ないサンプル数で全音域をカバーできる
         extended_end_semitone = note_to_semitone(end_note) + 24  # 2オクターブ上まで
         candidate_bases = generate_note_range(start_note, semitone_to_note(extended_end_semitone))
+
+    # 許容誤差内のパラメータが存在しないノートを候補から除外
+    def has_valid_params(note: str) -> bool:
+        """指定ノートで許容誤差内のdPCMパラメータが存在するかチェック"""
+        freq = freq_from_note(note)
+        result = find_best_fit_params(
+            freq,
+            min_cycles=cycles,
+            max_cycles=max(cycles * 4, 64),
+            prefer_quality=not prefer_quality_samples,
+            min_rate_index=15,  # サンソフトベース方式は最高レート
+            max_cents_error=max_cents_error
+        )
+        if result is None:
+            return False
+        # 実際の誤差をチェック（find_best_fit_paramsは許容誤差外でも誤差最小を返す）
+        rate, rate_idx, spc, num_cycles, wave_samples = result
+        actual_freq = rate / spc
+        cents = 1200 * math.log2(actual_freq / freq)
+        return abs(cents) <= max_cents_error
+
+    valid_candidates = [n for n in candidate_bases if has_valid_params(n)]
+
+    if not valid_candidates:
+        raise ValueError(f"許容誤差{max_cents_error}cents内で生成可能な基本サンプル候補がありません")
+
+    candidate_bases = valid_candidates
 
     base_samples = []
     note_mapping = {}
@@ -209,7 +238,8 @@ def generate_sunsoft_samples(
     preview_loops: int = 4,
     raw_preview: bool = False,
     raw_preview_loops: int = None,
-    warmup: bool = False
+    warmup: bool = False,
+    max_cents_error: float = 15.0
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     基本サンプルファイル群を生成
@@ -247,7 +277,8 @@ def generate_sunsoft_samples(
                     max_cycles=max(cycles * 4, 64),
                     prefer_quality=prefer_quality,
                     min_rate_index=15,  # 最高レートを使用
-                    loop_match_reserve=loop_reserve
+                    loop_match_reserve=loop_reserve,
+                    max_cents_error=max_cents_error
                 )
                 if result is None:
                     # フォールバック: min_rate_indexを緩和
@@ -257,7 +288,8 @@ def generate_sunsoft_samples(
                         max_cycles=max(cycles * 4, 64),
                         prefer_quality=prefer_quality,
                         min_rate_index=12,
-                        loop_match_reserve=loop_reserve
+                        loop_match_reserve=loop_reserve,
+                        max_cents_error=max_cents_error
                     )
                 if result is None:
                     print(f"  {base_note}: スキップ（適切なパラメータなし）")
@@ -537,7 +569,8 @@ def analyze_coverage(
     end_note: str,
     max_cents_error: float = 25.0,
     prefer_higher_rate: bool = False,
-    prefer_quality_samples: bool = True
+    prefer_quality_samples: bool = True,
+    cycles: int = 8
 ) -> None:
     """
     分析のみ実行（ファイル生成なし）
@@ -563,7 +596,8 @@ def analyze_coverage(
     # 最小サンプルセットを計算
     try:
         base_samples, note_mapping = find_minimum_sample_set(
-            start_note, end_note, max_cents_error, prefer_higher_rate, prefer_quality_samples
+            start_note, end_note, max_cents_error, prefer_higher_rate, prefer_quality_samples,
+            cycles=cycles
         )
     except ValueError as e:
         print(f"エラー: {e}")
@@ -688,7 +722,8 @@ def main():
     # prefer_quality_samplesはデフォルトTrue、--size-priority指定時にFalse
     prefer_quality_samples = not args.size_priority
     if args.analyze_only:
-        analyze_coverage(args.start, args.end, args.max_error, args.prefer_quality, prefer_quality_samples)
+        analyze_coverage(args.start, args.end, args.max_error, args.prefer_quality, prefer_quality_samples,
+                        cycles=args.cycles)
         return
 
     # 波形タイプの決定
@@ -736,7 +771,8 @@ def main():
     # 最小サンプルセットを計算
     try:
         base_sample_notes, note_mapping = find_minimum_sample_set(
-            args.start, args.end, args.max_error, args.prefer_quality, prefer_quality_samples
+            args.start, args.end, args.max_error, args.prefer_quality, prefer_quality_samples,
+            cycles=args.cycles
         )
     except ValueError as e:
         print(f"エラー: {e}")
@@ -766,7 +802,8 @@ def main():
         preview_loops=args.preview_loops,
         raw_preview=args.raw_preview,
         raw_preview_loops=args.raw_preview_loops,
-        warmup=args.warmup
+        warmup=args.warmup,
+        max_cents_error=args.max_error
     )
     print()
 
