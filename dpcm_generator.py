@@ -508,13 +508,26 @@ def encode_dpcm(samples: list[float], start_value: int = 64, loop_match: bool = 
     
     # ループ用：終端を開始値に戻す
     if loop_match:
-        while current != start_value:
+        # パリティチェック：currentとstart_valueの偶奇が異なる場合、到達不可能
+        # その場合は最も近い到達可能な値を目標にする
+        target_end = start_value
+        if (current % 2) != (start_value % 2):
             if current < start_value:
+                target_end = max(0, start_value - 1)
+            else:
+                target_end = min(127, start_value + 1)
+
+        # 無限ループ防止（理論上最大64ステップで到達可能）
+        max_iterations = 128
+        iterations = 0
+        while current != target_end and iterations < max_iterations:
+            if current < target_end:
                 bits.append(1)
                 current = min(127, current + 2)
             else:
                 bits.append(0)
                 current = max(0, current - 2)
+            iterations += 1
     
     # ファミコンdPCMは (8 + 128*n) サンプル単位
     # つまり (1 + 16*n) バイト単位
