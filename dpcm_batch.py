@@ -11,7 +11,7 @@ from dpcm_generator import (
     freq_from_note, find_best_sample_rate, find_best_fit_params,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     get_valid_dpcm_sample_counts, find_nearest_valid_sample_count,
-    generate_preview, generate_raw_preview,
+    generate_preview, generate_raw_preview, apply_lowpass_filter,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_positive_int, validate_non_negative_int,
@@ -28,7 +28,7 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False, lowpass_cutoff: float = None, lowpass_order: int = 63, wav_sample_rate: int = None, no_auto_lowpass: bool = False):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
@@ -84,8 +84,27 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
             filename = f"{prefix}{wave_type}_{safe_note}.dmc"
             filepath = os.path.join(output_dir, filename)
 
+            # WAV入力時のローパスフィルタ処理
+            filtered_waveform = custom_waveform
+            if custom_waveform and wav_sample_rate and not no_auto_lowpass:
+                if lowpass_cutoff:
+                    # 明示的にカットオフ周波数が指定された場合
+                    filtered_waveform = apply_lowpass_filter(
+                        custom_waveform, wav_sample_rate,
+                        lowpass_cutoff, lowpass_order
+                    )
+                else:
+                    # 自動計算: 出力サンプルレートの0.4倍
+                    auto_cutoff = sample_rate * 0.4
+                    filtered_waveform = apply_lowpass_filter(
+                        custom_waveform, wav_sample_rate,
+                        auto_cutoff, lowpass_order
+                    )
+
             # 波形生成（1周期分）
-            if custom_waveform:
+            if filtered_waveform:
+                waveform_1cycle = resample_waveform(filtered_waveform, num_samples)
+            elif custom_waveform:
                 waveform_1cycle = resample_waveform(custom_waveform, num_samples)
             else:
                 waveform_1cycle = generate_waveform(wave_type, num_samples)
@@ -257,12 +276,23 @@ def main():
     parser.add_argument('--raw-preview-loops',
                         type=validate_positive_int,
                         help='エンコード前プレビューのループ回数（デフォルト: --preview-loopsと同値）')
+    parser.add_argument('--lowpass',
+                        type=float,
+                        help='ローパスフィルタのカットオフ周波数（Hz）（WAV入力時のみ有効）')
+    parser.add_argument('--lowpass-order',
+                        type=validate_positive_int,
+                        default=63,
+                        help='ローパスフィルタの次数（デフォルト: 63）')
+    parser.add_argument('--no-auto-lowpass',
+                        action='store_true',
+                        help='自動ローパスフィルタを無効化（WAV入力時のみ有効）')
 
     args = parser.parse_args()
 
     # カスタム波形の読み込み
     custom_waveform = None
     wave_type = args.wave
+    wav_sample_rate = None
 
     try:
         if args.hex:
@@ -336,6 +366,11 @@ def main():
         print(f"ループマッチ: 有効")
     if args.warmup:
         print(f"ウォームアップ: 有効（1周期分をスキップ）")
+    if args.wav and not args.no_auto_lowpass:
+        if args.lowpass:
+            print(f"ローパスフィルタ: {args.lowpass:.0f}Hz (次数: {args.lowpass_order})")
+        else:
+            print(f"ローパスフィルタ: 自動 (次数: {args.lowpass_order})")
     print()
 
     results, failures = generate_note_set(wave_type, args.output_dir, custom_waveform=custom_waveform,
@@ -344,7 +379,9 @@ def main():
                                  min_rate_index=args.min_rate_index or 0,
                                  preview=args.preview, preview_loops=args.preview_loops,
                                  raw_preview=args.raw_preview, raw_preview_loops=args.raw_preview_loops,
-                                 warmup=args.warmup)
+                                 warmup=args.warmup,
+                                 lowpass_cutoff=args.lowpass, lowpass_order=args.lowpass_order,
+                                 wav_sample_rate=wav_sample_rate, no_auto_lowpass=args.no_auto_lowpass)
 
     # 失敗レポート
     if failures:

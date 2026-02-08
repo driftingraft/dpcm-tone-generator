@@ -154,6 +154,83 @@ def validate_readable_file(value: str) -> str:
 # 波形処理関数
 # =============================================================================
 
+def apply_lowpass_filter(samples: list[float], sample_rate: int,
+                          cutoff_freq: float, order: int = 63) -> list[float]:
+    """
+    窓関数法によるFIRローパスフィルタを適用
+
+    Args:
+        samples: 0.0〜1.0の波形サンプル列
+        sample_rate: 入力サンプルレート（Hz）
+        cutoff_freq: カットオフ周波数（Hz）
+        order: フィルタ次数（奇数推奨、デフォルト: 63）
+
+    Returns:
+        フィルタ適用後の波形（0.0〜1.0にクリップ）
+
+    Raises:
+        ValueError: cutoff_freqまたはorderが不正な場合
+    """
+    if cutoff_freq <= 0:
+        raise ValueError(f"カットオフ周波数は正の値を指定してください: {cutoff_freq}")
+    if order < 1:
+        raise ValueError(f"フィルタ次数は1以上を指定してください: {order}")
+    if cutoff_freq >= sample_rate / 2:
+        # ナイキスト周波数以上の場合はフィルタ不要
+        return samples
+
+    if not samples:
+        return samples
+
+    # 正規化カットオフ周波数（0〜1、1がナイキスト周波数）
+    normalized_cutoff = cutoff_freq / (sample_rate / 2)
+
+    # フィルタ係数を生成（sinc関数 + ハミング窓）
+    half_order = order // 2
+    coefficients = []
+
+    for n in range(-half_order, half_order + 1):
+        if n == 0:
+            # sinc(0) = 1
+            h = normalized_cutoff
+        else:
+            # sinc関数: sin(πx) / (πx)
+            h = math.sin(math.pi * normalized_cutoff * n) / (math.pi * n)
+
+        # ハミング窓を適用
+        window = 0.54 - 0.46 * math.cos(2 * math.pi * (n + half_order) / order)
+        coefficients.append(h * window)
+
+    # 係数を正規化（合計が1になるように）
+    coef_sum = sum(coefficients)
+    if coef_sum != 0:
+        coefficients = [c / coef_sum for c in coefficients]
+
+    # 畳み込みによるフィルタ適用
+    result = []
+    num_samples = len(samples)
+
+    for i in range(num_samples):
+        acc = 0.0
+        for j, coef in enumerate(coefficients):
+            # 境界処理：ミラーリング
+            idx = i - half_order + j
+            if idx < 0:
+                idx = -idx
+            elif idx >= num_samples:
+                idx = 2 * num_samples - idx - 2
+            # インデックスが範囲外の場合は端の値を使用
+            if idx < 0:
+                idx = 0
+            elif idx >= num_samples:
+                idx = num_samples - 1
+            acc += samples[idx] * coef
+        # クリッピング
+        result.append(max(0.0, min(1.0, acc)))
+
+    return result
+
+
 def load_wav_waveform(filepath: str) -> tuple[list[float], int]:
     """
     WAVファイルから波形データを読み込む
@@ -974,6 +1051,16 @@ def main():
     parser.add_argument('--raw-preview-loops',
                         type=validate_positive_int,
                         help='エンコード前プレビューのループ回数（デフォルト: --preview-loopsと同値）')
+    parser.add_argument('--lowpass',
+                        type=validate_positive_float,
+                        help='ローパスフィルタのカットオフ周波数（Hz）（WAV入力時のみ有効）')
+    parser.add_argument('--lowpass-order',
+                        type=validate_positive_int,
+                        default=63,
+                        help='ローパスフィルタの次数（デフォルト: 63）')
+    parser.add_argument('--no-auto-lowpass',
+                        action='store_true',
+                        help='自動ローパスフィルタを無効化（WAV入力時のみ有効）')
 
     args = parser.parse_args()
     
@@ -1017,6 +1104,22 @@ def main():
         elif args.wav:
             custom_waveform, wav_sample_rate = load_wav_waveform(args.wav)
             wave_type_display = f"WAV ({len(custom_waveform)}サンプル, {wav_sample_rate}Hz, {args.wav})"
+
+            # WAV入力時のローパスフィルタ処理
+            if not args.no_auto_lowpass:
+                if args.lowpass:
+                    # 明示的にカットオフ周波数が指定された場合
+                    lowpass_cutoff = args.lowpass
+                else:
+                    # 自動計算: 出力サンプルレートの0.4倍（後で確定後に適用）
+                    lowpass_cutoff = None  # 後で計算
+
+                if lowpass_cutoff is not None:
+                    custom_waveform = apply_lowpass_filter(
+                        custom_waveform, wav_sample_rate,
+                        lowpass_cutoff, args.lowpass_order
+                    )
+                    wave_type_display += f" [LP:{lowpass_cutoff:.0f}Hz]"
     except ValueError as e:
         print(f"エラー: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1067,7 +1170,19 @@ def main():
     
     # 有効なdPCMサイズを取得
     final_samples, final_bytes = find_nearest_valid_sample_count(total_samples)
-    
+
+    # WAV入力時の自動ローパスフィルタ（サンプルレート確定後に適用）
+    lowpass_applied = None
+    if args.wav and wav_sample_rate and not args.no_auto_lowpass and not args.lowpass:
+        # 自動計算: 出力サンプルレートの0.4倍
+        auto_cutoff = sample_rate * 0.4
+        custom_waveform = apply_lowpass_filter(
+            custom_waveform, wav_sample_rate,
+            auto_cutoff, args.lowpass_order
+        )
+        lowpass_applied = auto_cutoff
+        wave_type_display += f" [LP:{auto_cutoff:.0f}Hz(auto)]"
+
     print(f"=== dPCM生成情報 ===")
     print(f"波形タイプ    : {wave_type_display}")
     print(f"目標音程      : {note_name}")
@@ -1096,6 +1211,11 @@ def main():
         print(f"ループマッチ  : 有効")
     if args.warmup:
         print(f"ウォームアップ: 有効（1周期分をスキップ）")
+    if args.wav and not args.no_auto_lowpass:
+        if args.lowpass:
+            print(f"ローパスフィルタ: {args.lowpass:.0f}Hz (次数: {args.lowpass_order})")
+        elif lowpass_applied:
+            print(f"ローパスフィルタ: {lowpass_applied:.0f}Hz (自動, 次数: {args.lowpass_order})")
     print()
 
     # 波形生成（1周期分）
