@@ -12,6 +12,7 @@ from dpcm_generator import (
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     get_valid_dpcm_sample_counts, find_nearest_valid_sample_count,
     generate_preview, generate_raw_preview, apply_lowpass_filter,
+    mix_sub_octave,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_positive_int, validate_non_negative_int,
@@ -28,7 +29,7 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False, lowpass_cutoff: float = None, lowpass_order: int = 63, wav_sample_rate: int = None, no_auto_lowpass: bool = False):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False, lowpass_cutoff: float = None, lowpass_order: int = 63, wav_sample_rate: int = None, no_auto_lowpass: bool = False, sub_octave: float = 0.0):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
@@ -58,11 +59,22 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
                 # fitモード: 有効なdPCMサンプル数にぴったり合わせる
                 # loop_matchが有効な場合、余地を確保
                 loop_reserve = 64 if loop_match else 0
+                # サブオクターブ混合時はループ境界整合のため偶数周期を要求
+                require_even = sub_octave > 0
                 result = find_best_fit_params(target_freq, min_cycles=cycles,
                                               max_cycles=max(cycles * 4, 64),
                                               prefer_quality=prefer_quality,
                                               min_rate_index=min_rate_index,
-                                              loop_match_reserve=loop_reserve)
+                                              loop_match_reserve=loop_reserve,
+                                              require_even_cycles=require_even)
+                if result is None and require_even:
+                    # 偶数周期の解が見つからない場合は制約を外して再探索
+                    print(f"  {note}: 偶数周期の解なし（サブオクターブがループ境界でずれる可能性）")
+                    result = find_best_fit_params(target_freq, min_cycles=cycles,
+                                                  max_cycles=max(cycles * 4, 64),
+                                                  prefer_quality=prefer_quality,
+                                                  min_rate_index=min_rate_index,
+                                                  loop_match_reserve=loop_reserve)
                 if result is None:
                     print(f"  {note}: スキップ（適切なパラメータなし）")
                     failures.append((note, "適切なパラメータが見つかりません"))
@@ -75,6 +87,9 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
                     failures.append((note, "適切なサンプルレートが見つかりません"))
                     continue
                 num_cycles = cycles
+                # サブオクターブ混合時はループ境界整合のため偶数周期に揃える
+                if sub_octave > 0 and num_cycles % 2 != 0:
+                    num_cycles += 1
                 total_samples = num_samples * num_cycles
 
             actual_freq = sample_rate / num_samples
@@ -116,6 +131,14 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
             # 複数周期に拡張（warmup有効時は+1周期）
             extra_cycles = 1 if warmup else 0
             waveform = waveform_1cycle * (num_cycles + extra_cycles)
+
+            # サブオクターブ混合
+            if sub_octave > 0:
+                waveform = mix_sub_octave(
+                    waveform, num_samples,
+                    wave_type, sub_octave,
+                    custom_waveform=filtered_waveform or custom_waveform or None
+                )
 
             # エンコード
             warmup_count = num_samples if warmup else 0
@@ -286,6 +309,10 @@ def main():
     parser.add_argument('--no-auto-lowpass',
                         action='store_true',
                         help='自動ローパスフィルタを無効化（WAV入力時のみ有効）')
+    parser.add_argument('--sub-octave',
+                        type=validate_non_negative_float,
+                        default=0.0,
+                        help='1オクターブ下のサブハーモニックを混合する量（0.0=なし、0.3=基音の30%%）')
 
     args = parser.parse_args()
 
@@ -371,6 +398,8 @@ def main():
             print(f"ローパスフィルタ: {args.lowpass:.0f}Hz (次数: {args.lowpass_order})")
         else:
             print(f"ローパスフィルタ: 自動 (次数: {args.lowpass_order})")
+    if args.sub_octave > 0:
+        print(f"サブオクターブ: {args.sub_octave:.2f}（1オクターブ下を混合）")
     print()
 
     results, failures = generate_note_set(wave_type, args.output_dir, custom_waveform=custom_waveform,
@@ -381,7 +410,8 @@ def main():
                                  raw_preview=args.raw_preview, raw_preview_loops=args.raw_preview_loops,
                                  warmup=args.warmup,
                                  lowpass_cutoff=args.lowpass, lowpass_order=args.lowpass_order,
-                                 wav_sample_rate=wav_sample_rate, no_auto_lowpass=args.no_auto_lowpass)
+                                 wav_sample_rate=wav_sample_rate, no_auto_lowpass=args.no_auto_lowpass,
+                                 sub_octave=args.sub_octave)
 
     # 失敗レポート
     if failures:

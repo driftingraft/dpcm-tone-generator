@@ -446,6 +446,50 @@ def adjust_volume(waveform: list[float], volume: float) -> list[float]:
     return result
 
 
+def mix_sub_octave(waveform: list[float], num_samples_per_cycle: int,
+                   wave_type: str, amount: float,
+                   custom_waveform: list[float] = None) -> list[float]:
+    """
+    1オクターブ下のサブハーモニックを波形に混合する
+
+    1オクターブ下は周波数が1/2（周期が2倍）の波形。
+    サブオクターブの偏差（0.5からの距離）をamount倍してベース波形に加算する。
+    ループの整合性を保つには num_samples_per_cycle * 周期数 が偶数である必要がある。
+
+    Args:
+        waveform: 基音の波形（複数周期分、0.0〜1.0）
+        num_samples_per_cycle: 基音の1周期サンプル数
+        wave_type: 波形タイプ（基音と同じ波形を使用）
+        amount: 混合量（0.0=なし、1.0=基音と同音量）
+        custom_waveform: カスタム波形（指定時はwave_typeの代わりに使用）
+
+    Returns:
+        混合後の波形（0.0〜1.0にクリップ）
+    """
+    if amount <= 0:
+        return waveform
+
+    total_samples = len(waveform)
+    sub_period = num_samples_per_cycle * 2  # 1オクターブ下 = 2倍の周期
+
+    # サブオクターブの1周期波形を生成
+    if custom_waveform:
+        sub_1cycle = resample_waveform(custom_waveform, sub_period)
+    else:
+        sub_1cycle = generate_waveform(wave_type, sub_period)
+
+    # サブオクターブ波形をtotal_samples分展開して加算
+    result = []
+    for i in range(total_samples):
+        base = waveform[i]
+        sub = sub_1cycle[i % sub_period]
+        sub_dev = sub - 0.5
+        mixed = base + sub_dev * amount
+        result.append(max(0.0, min(1.0, mixed)))
+
+    return result
+
+
 def visualize_waveform(waveform: list[float], width: int = 64, height: int = 16) -> str:
     """
     波形をASCIIアートで可視化
@@ -875,7 +919,7 @@ def find_best_sample_rate(target_freq: float, min_samples: int = 32) -> tuple[fl
     return best_rate, best_index, best_samples
 
 
-def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: int = 64, max_cents_error: float = 15.0, prefer_quality: bool = False, min_rate_index: int = 0, loop_match_reserve: int = 0) -> tuple[float, int, int, int, int]:
+def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: int = 64, max_cents_error: float = 15.0, prefer_quality: bool = False, min_rate_index: int = 0, loop_match_reserve: int = 0, require_even_cycles: bool = False) -> tuple[float, int, int, int, int]:
     """
     目標周波数に対して、有効なdPCMサンプル数(8+128n)にぴったり収まる
     最適なサンプルレート・周期数の組み合わせを見つける
@@ -890,6 +934,8 @@ def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: in
         prefer_quality: Trueの場合、サイズよりサンプルレートを優先（高音質）
         min_rate_index: サンプルレートの下限インデックス（0-15）
         loop_match_reserve: ループマッチ用に確保するサンプル数（0-64）
+        require_even_cycles: Trueの場合、周期数が偶数の候補のみを対象とする
+                             （サブオクターブ混合時のループ境界整合のため）
 
     Returns:
         (sample_rate, rate_index, samples_per_cycle, num_cycles, wave_samples)
@@ -911,6 +957,10 @@ def find_best_fit_params(target_freq: float, min_cycles: int = 1, max_cycles: in
             continue
         
         for num_cycles in range(min_cycles, max_cycles + 1):
+            # サブオクターブ混合時は偶数周期のみ（ループ境界整合のため）
+            if require_even_cycles and num_cycles % 2 != 0:
+                continue
+
             # 理想的な合計サンプル数
             ideal_total = ideal_samples_per_cycle * num_cycles
             
@@ -1061,6 +1111,10 @@ def main():
     parser.add_argument('--no-auto-lowpass',
                         action='store_true',
                         help='自動ローパスフィルタを無効化（WAV入力時のみ有効）')
+    parser.add_argument('--sub-octave',
+                        type=validate_non_negative_float,
+                        default=0.0,
+                        help='1オクターブ下のサブハーモニックを混合する量（0.0=なし、0.3=基音の30%%）')
 
     args = parser.parse_args()
     
@@ -1143,11 +1197,22 @@ def main():
         # fitモード: 有効なdPCMサンプル数にぴったり合わせる
         # loop_matchが有効な場合、余地を確保
         loop_reserve = 64 if args.loop_match else 0
+        # サブオクターブ混合時はループ境界整合のため偶数周期を要求
+        require_even = args.sub_octave > 0
         result = find_best_fit_params(target_freq, min_cycles=args.cycles,
                                        max_cycles=max(args.cycles * 4, 64),
                                        prefer_quality=args.quality,
                                        min_rate_index=args.min_rate_index or 0,
-                                       loop_match_reserve=loop_reserve)
+                                       loop_match_reserve=loop_reserve,
+                                       require_even_cycles=require_even)
+        if result is None and require_even:
+            # 偶数周期の解が見つからない場合は制約を外して再探索
+            print("警告: 偶数周期の解が見つからず、サブオクターブがループ境界でずれる可能性があります")
+            result = find_best_fit_params(target_freq, min_cycles=args.cycles,
+                                           max_cycles=max(args.cycles * 4, 64),
+                                           prefer_quality=args.quality,
+                                           min_rate_index=args.min_rate_index or 0,
+                                           loop_match_reserve=loop_reserve)
         if result is None:
             print("エラー: 適切なパラメータが見つかりませんでした")
             return
@@ -1156,9 +1221,17 @@ def main():
         sample_rate = SAMPLE_RATES_NTSC[args.rate_index]
         num_samples = round(sample_rate / target_freq)
         rate_index = args.rate_index
+        # サブオクターブ混合時はループ境界整合のため偶数周期に揃える
+        if args.sub_octave > 0 and num_cycles % 2 != 0:
+            num_cycles += 1
+            print(f"サブオクターブ整合のため周期数を偶数に調整: {num_cycles}")
         total_samples = num_samples * num_cycles
     else:
         sample_rate, rate_index, num_samples = find_best_sample_rate(target_freq)
+        # サブオクターブ混合時はループ境界整合のため偶数周期に揃える
+        if args.sub_octave > 0 and num_cycles % 2 != 0:
+            num_cycles += 1
+            print(f"サブオクターブ整合のため周期数を偶数に調整: {num_cycles}")
         total_samples = num_samples * num_cycles
     
     if sample_rate is None:
@@ -1205,6 +1278,8 @@ def main():
     elif total_samples != final_samples:
         print(f"パディング    : {total_samples} → {final_samples} サンプル")
     print(f"ファイルサイズ: {final_bytes} バイト")
+    if args.sub_octave > 0:
+        print(f"サブオクターブ  : {args.sub_octave:.2f}（1オクターブ下を混合）")
     if args.auto_start:
         print(f"開始値自動設定: 有効")
     if args.loop_match:
@@ -1243,6 +1318,16 @@ def main():
     # 複数周期分に拡張（warmup有効時は+1周期）
     extra_cycles = 1 if args.warmup else 0
     waveform = waveform_1cycle * (num_cycles + extra_cycles)
+
+    # サブオクターブ混合（周期数は偶数に調整済み。万一奇数なら警告）
+    if args.sub_octave > 0:
+        if num_cycles % 2 != 0:
+            print(f"警告: 周期数が奇数（{num_cycles}）のため、サブオクターブがループ境界でずれます")
+        waveform = mix_sub_octave(
+            waveform, num_samples,
+            args.wave, args.sub_octave,
+            custom_waveform=custom_waveform if custom_waveform else None
+        )
 
     if args.show_wave:
         print()

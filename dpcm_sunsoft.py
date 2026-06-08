@@ -17,6 +17,7 @@ from dpcm_generator import (
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     note_to_semitone, semitone_to_note, generate_note_range,
     generate_preview, generate_raw_preview, decode_dpcm, apply_lowpass_filter,
+    mix_sub_octave,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_note_name, validate_positive_int, validate_non_negative_int,
@@ -243,7 +244,8 @@ def generate_sunsoft_samples(
     lowpass_cutoff: float = None,
     lowpass_order: int = 63,
     wav_sample_rate: int = None,
-    no_auto_lowpass: bool = False
+    no_auto_lowpass: bool = False,
+    sub_octave: float = 0.0
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     基本サンプルファイル群を生成
@@ -275,6 +277,8 @@ def generate_sunsoft_samples(
             # loop_matchが有効な場合、余地を確保
             loop_reserve = 64 if loop_match else 0
             if fit:
+                # サブオクターブ混合時はループ境界整合のため偶数周期を要求
+                require_even = sub_octave > 0
                 result = find_best_fit_params(
                     target_freq,
                     min_cycles=cycles,
@@ -282,10 +286,24 @@ def generate_sunsoft_samples(
                     prefer_quality=prefer_quality,
                     min_rate_index=15,  # 最高レートを使用
                     loop_match_reserve=loop_reserve,
-                    max_cents_error=max_cents_error
+                    max_cents_error=max_cents_error,
+                    require_even_cycles=require_even
                 )
                 if result is None:
                     # フォールバック: min_rate_indexを緩和
+                    result = find_best_fit_params(
+                        target_freq,
+                        min_cycles=cycles,
+                        max_cycles=max(cycles * 4, 64),
+                        prefer_quality=prefer_quality,
+                        min_rate_index=12,
+                        loop_match_reserve=loop_reserve,
+                        max_cents_error=max_cents_error,
+                        require_even_cycles=require_even
+                    )
+                if result is None and require_even:
+                    # 偶数周期の解が見つからない場合は制約を外して再探索
+                    print(f"  {base_note}: 偶数周期の解なし（サブオクターブがループ境界でずれる可能性）")
                     result = find_best_fit_params(
                         target_freq,
                         min_cycles=cycles,
@@ -306,6 +324,9 @@ def generate_sunsoft_samples(
                 num_samples = round(sample_rate / target_freq)
                 rate_index = 15
                 num_cycles = cycles
+                # サブオクターブ混合時はループ境界整合のため偶数周期に揃える
+                if sub_octave > 0 and num_cycles % 2 != 0:
+                    num_cycles += 1
                 total_samples = num_samples * num_cycles
 
             actual_freq = sample_rate / num_samples
@@ -347,6 +368,14 @@ def generate_sunsoft_samples(
             # 複数周期に拡張（warmup有効時は+1周期）
             extra_cycles = 1 if warmup else 0
             waveform = waveform_1cycle * (num_cycles + extra_cycles)
+
+            # サブオクターブ混合
+            if sub_octave > 0:
+                waveform = mix_sub_octave(
+                    waveform, num_samples,
+                    wave_type, sub_octave,
+                    custom_waveform=filtered_waveform or custom_waveform or None
+                )
 
             # エンコード
             warmup_count = num_samples if warmup else 0
@@ -748,6 +777,10 @@ def main():
     parser.add_argument('--no-auto-lowpass',
                        action='store_true',
                        help='自動ローパスフィルタを無効化（WAV入力時のみ有効）')
+    parser.add_argument('--sub-octave',
+                       type=validate_non_negative_float,
+                       default=0.0,
+                       help='1オクターブ下のサブハーモニックを混合する量（0.0=なし、0.3=基音の30%%）')
 
     args = parser.parse_args()
 
@@ -805,6 +838,8 @@ def main():
             print(f"ローパスフィルタ: {args.lowpass:.0f}Hz (次数: {args.lowpass_order})")
         else:
             print(f"ローパスフィルタ: 自動 (次数: {args.lowpass_order})")
+    if args.sub_octave > 0:
+        print(f"サブオクターブ: {args.sub_octave:.2f}（1オクターブ下を混合）")
     print()
 
     # 最小サンプルセットを計算
@@ -846,7 +881,8 @@ def main():
         lowpass_cutoff=args.lowpass,
         lowpass_order=args.lowpass_order,
         wav_sample_rate=wav_sample_rate,
-        no_auto_lowpass=args.no_auto_lowpass
+        no_auto_lowpass=args.no_auto_lowpass,
+        sub_octave=args.sub_octave
     )
     print()
 
