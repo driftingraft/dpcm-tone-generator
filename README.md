@@ -11,6 +11,7 @@
 - **3段階の品質設定**: サイズ優先 / レート下限指定（中間バランス） / 高品質優先から選択可能
 - **音量調整**: 波形の振幅を調整可能
 - **ループ最適化**: 開始値の自動設定、終端値の調整でシームレスなループを実現
+- **サブオクターブ混合**: 1オクターブ下のサブハーモニックを重ねて低音を補強（周期数を自動で偶数化しループ境界のズレを回避）
 - **バッチ生成**: 全音階（C2〜F4）を一括生成、ppmck用定義ファイルも出力
 - **サンソフトベース方式**: 最小限のサンプル数で全音階をカバー、メモリ使用量を大幅削減
 
@@ -54,6 +55,21 @@ python dpcm_generator.py --fds-file waveform.txt --note C3 --fit --auto-start --
 # 高品質モード + 複数周期 + 音量調整
 python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --volume 0.5 --auto-start --output saw_c3.dmc
 ```
+
+### サブオクターブ混合（低音補強）
+
+`--sub-octave`で、1オクターブ下（周波数1/2）のサブハーモニックを基音に混合します。ベース音に厚みを持たせたい場合に有効です。値は混合量で、`0.3`なら基音の30%の振幅で重ねます。
+
+```bash
+# 基音の30%の量でサブオクターブを混合
+python dpcm_generator.py --wave saw --note C3 --fit --sub-octave 0.3 --auto-start --output saw_c3.dmc
+
+# バッチ・サンソフト方式でも同様に指定可能
+python dpcm_batch.py --wave saw --fit --sub-octave 0.3 --output-dir ./dpcm_samples
+python dpcm_sunsoft.py --wave saw --sub-octave 0.3 --output-dir ./sunsoft_samples
+```
+
+サブオクターブは周期が基音の2倍のため、ループ範囲の周期数が奇数だと境界で半周期ズレてクリックノイズの原因になります。これを避けるため、`--sub-octave`指定時は**周期数を自動的に偶数へ調整**します（fitモードでは偶数周期の候補のみを探索）。許容誤差内に偶数周期の解が無い場合のみ、警告を出したうえで従来通り生成します。
 
 ### バッチ生成（全音階）
 
@@ -119,6 +135,7 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 | `--wav` | | WAVファイル |
 | `--cycles` | `-c` | 周期数（デフォルト: 1） |
 | `--volume` | `-v` | 音量係数（デフォルト: 1.0） |
+| `--sub-octave` | | 1オクターブ下を混合する量（0.0=なし、0.3=基音の30%、周期数は自動で偶数化） |
 | `--fit` | | 有効サンプル長に自動フィット |
 | `--quality` | `-q` | fitモード時、高サンプルレート優先 |
 | `--min-rate-index` | | fitモード時、サンプルレートの下限を指定（0-15） |
@@ -157,6 +174,7 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 | `--fit` | | fitモード（dPCM有効サンプル数に合わせる） |
 | `--cycles` | | 周期数（デフォルト: 8） |
 | `--volume` | | 音量（0.0-1.0、デフォルト: 1.0） |
+| `--sub-octave` | | 1オクターブ下を混合する量（0.0=なし、0.3=基音の30%、周期数は自動で偶数化） |
 | `--auto-start` | | 開始値を波形に合わせる |
 | `--loop-match` | | ループ時に開始値に戻るよう調整 |
 | `--prefer-quality` | | レート選択で高レートを優先 |
