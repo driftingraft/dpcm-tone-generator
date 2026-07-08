@@ -15,6 +15,8 @@ NES dPCM Generator - ファミコン（NES）のdPCMサンプルを生成するP
 - `dpcm_generator.py` - メインのdPCMジェネレーター（単一ファイル生成）
 - `dpcm_batch.py` - バッチ処理用スクリプト（全音階一括生成）
 - `dpcm_sunsoft.py` - サンソフトベース方式（最小サンプル数で全音階カバー）
+- `dpcm_gui.py` - ブラウザGUI用ローカルWebサーバー（3スクリプト全機能をAPI経由で提供）
+- `dpcm_gui.html` - GUIのフロントエンド（単一HTML、`dpcm_gui.py`が配信）
 - `examples/` - サンプルファイル
 
 ### 技術スタック
@@ -41,6 +43,9 @@ python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpc
 
 # サンプルレート情報表示
 python dpcm_generator.py --info
+
+# GUI起動（http://127.0.0.1:8765/）
+python dpcm_gui.py --no-browser
 ```
 
 ## 開発時の注意点
@@ -48,6 +53,7 @@ python dpcm_generator.py --info
 ### ファイル間の依存関係
 
 `dpcm_batch.py`と`dpcm_sunsoft.py`は`dpcm_generator.py`から関数をインポートして使用している。
+`dpcm_gui.py`はさらに3ファイル全てから関数をインポートしてWeb APIとして公開している（単一生成は`dpcm_generator.py`のmain()相当の処理を`handle_generate()`で再実装しているため、main()のロジック変更時は`dpcm_gui.py`側も追従が必要）。
 
 ```python
 from dpcm_generator import (
@@ -91,4 +97,11 @@ python3 dpcm_batch.py --wave saw --fit --output-dir /tmp/batch_test
 
 # サンソフトベース方式の確認
 python3 dpcm_sunsoft.py --wave saw --output-dir /tmp/sunsoft_test
+
+# GUIの確認（起動してAPIを叩き、CLIと同一の.dmcが得られるか比較）
+python3 dpcm_gui.py --no-browser --port 8791 &
+curl -s -X POST http://127.0.0.1:8791/api/generate -H 'Content-Type: application/json' \
+  -d '{"wave":"saw","note":"C3","fit":true}' | python3 -c \
+  "import json,sys,base64;open('/tmp/gui_test.dmc','wb').write(base64.b64decode(json.load(sys.stdin)['dmc_base64']))"
+cmp /tmp/test.dmc /tmp/gui_test.dmc
 ```

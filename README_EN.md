@@ -12,6 +12,7 @@ Generate dPCM samples (.dmc) at specified pitches from arbitrary waveforms. Opti
 - **Volume control**: Adjustable waveform amplitude
 - **Loop optimization**: Auto-start value, endpoint adjustment for seamless loops
 - **Batch generation**: Generate all notes (C2-F4) at once with ppmck definition files
+- **Browser GUI**: All features accessible from a browser, with waveform display, audio preview, and ZIP download
 
 ## Requirements
 
@@ -26,6 +27,24 @@ cd nes-dpcm-generator
 ```
 
 ## Usage
+
+### GUI (Browser)
+
+```bash
+python dpcm_gui.py
+```
+
+Starts a local web server (default: http://127.0.0.1:8765/ ) and opens your browser. No additional packages required.
+
+- **Single**: equivalent to dpcm_generator.py — waveform graph, dPCM/pre-encode audio preview, ppmck definition example
+- **Batch**: equivalent to dpcm_batch.py — generate all notes C2-F4, per-note playback, ZIP download
+- **Sunsoft**: equivalent to dpcm_sunsoft.py — analysis, minimal sample set generation, scale preview playback
+- **Rates**: NTSC dPCM sample rate table
+
+```bash
+python dpcm_gui.py --port 8000     # change port
+python dpcm_gui.py --no-browser    # do not open the browser automatically
+```
 
 ### Basic Usage
 
