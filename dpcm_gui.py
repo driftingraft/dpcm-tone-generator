@@ -291,9 +291,10 @@ def handle_generate(p: dict) -> dict:
         if volume > 1.0:
             warnings.append(f"音量{volume:.0%}: クリッピングの可能性があります")
 
-    # 複数周期分に拡張（warmup有効時は+1周期）
-    extra_cycles = 1 if warmup else 0
-    waveform = waveform_1cycle * (num_cycles + extra_cycles)
+    # 複数周期分に拡張（warmup有効時は助走用に波形の1周期分を先頭に追加。
+    # サブオクターブ混合時は波形の周期が2倍になるため2周期分）
+    warmup_cycles = (2 if sub_octave > 0 else 1) if warmup else 0
+    waveform = waveform_1cycle * (num_cycles + warmup_cycles)
 
     # サブオクターブ混合
     if sub_octave > 0:
@@ -303,7 +304,7 @@ def handle_generate(p: dict) -> dict:
                                   custom_waveform=custom_waveform if custom_waveform else None)
 
     # dPCMエンコード
-    warmup_count = num_samples if warmup else 0
+    warmup_count = num_samples * warmup_cycles
     dpcm_data, actual_start = encode_dpcm(waveform, loop_match=loop_match,
                                           auto_start=auto_start,
                                           warmup_samples=warmup_count)
