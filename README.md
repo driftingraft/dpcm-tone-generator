@@ -320,6 +320,14 @@ MMLでの使用：
 E @DPCM0 | c   ; dPCMをトーンとして再生（ループ）
 ```
 
+## 更新履歴
+
+変更点は [CHANGELOG.md](CHANGELOG.md) を参照してください。
+
+## 開発について
+
+本プロジェクトは、開発に生成AI（[Claude Code](https://claude.com/claude-code)）を利用しています。
+
 ## 作者・連絡先
 
 - **漂流いかだ**（サークル: 時遊戯画 / Jiyugiga）

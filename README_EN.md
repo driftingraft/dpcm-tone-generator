@@ -206,6 +206,14 @@ In MML:
 E @DPCM0 | c   ; Play dPCM as tone
 ```
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) (written primarily in Japanese).
+
+## Development note
+
+This project is developed with the help of generative AI ([Claude Code](https://claude.com/claude-code)).
+
 ## Author / Contact
 
 - **漂流いかだ / driftingraft** (Circle: 時遊戯画 / Jiyugiga)
