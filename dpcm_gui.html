@@ -194,9 +194,22 @@
 
 <!-- ======================= バッチ生成 ======================= -->
 <section id="tab-batch" class="tab">
-  <p class="desc">C2〜F4の全音階（30ノート）を一括生成し、ppmck定義とZIPを出力します。dpcm_batch.py 相当の機能です。</p>
+  <p class="desc">指定した音域の全音階（デフォルト: C2〜F4）を一括生成し、ppmck定義とZIPを出力します。dpcm_batch.py 相当の機能です。</p>
   <div class="layout">
     <div>
+      <fieldset>
+        <legend>対象音階</legend>
+        <div class="row">
+          <div>
+            <label>開始ノート</label>
+            <select id="bt-start"></select>
+          </div>
+          <div>
+            <label>終了ノート</label>
+            <select id="bt-end"></select>
+          </div>
+        </div>
+      </fieldset>
       <div id="bt-wavesrc"></div>
       <div id="bt-common"></div>
       <fieldset>
@@ -696,9 +709,13 @@ function renderSingle(r, outname) {
 $('bt-wavesrc').innerHTML = waveSourceHTML('bt', true);
 $('bt-common').innerHTML = commonOptsHTML('bt', { cycles: 1 });
 setupWaveSource('bt');
+fillNoteSelect($('bt-start'), 'C2', 0, 7);
+fillNoteSelect($('bt-end'), 'F4', 0, 7);
 
 $('bt-run').addEventListener('click', () => withBusy($('bt-run'), $('bt-error'), async () => {
   const params = Object.assign(srcParams('bt'), commonParams('bt'), {
+    start: $('bt-start').value,
+    end: $('bt-end').value,
     dpcm_start_index: numOrNull('bt-startindex'),
     dpcm_path: $('bt-dpcmpath').value,
     include_preview: $('bt-incprev').checked,
@@ -722,7 +739,7 @@ function renderBatch(r) {
     </tr>`).join('');
 
   $('bt-result').innerHTML = `
-    <div class="ok-box">✔ ${r.results.length}ファイル生成（合計 ${r.total_size} バイト / ${(r.total_size/1024).toFixed(1)} KB）</div>
+    <div class="ok-box">✔ ${esc(r.start)}〜${esc(r.end)} の ${r.results.length}ファイル生成（合計 ${r.total_size} バイト / ${(r.total_size/1024).toFixed(1)} KB）</div>
     ${r.copied ? `<div class="ok-box">💾 サーバー側に保存: ${esc(r.copied.dir)}（${r.copied.files}ファイル）</div>` : ''}
     ${r.failures.length ? `<div class="warn-box">⚠ 失敗 ${r.failures.length}件: ${r.failures.map(f => esc((f.note||'') + ' ' + f.reason)).join(' / ')}</div>` : ''}
     <div class="toolbar">
@@ -893,7 +910,7 @@ async function init() {
         <thead><tr><th>インデックス</th><th>サンプルレート</th><th>$F比（セント差）</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p class="hint" style="margin-top:10px">バッチ生成の対象音階: ${data.batch_notes.map(esc).join(', ')}</p>
+      <p class="hint" style="margin-top:10px">バッチ生成のデフォルト対象音階: ${data.batch_notes.map(esc).join(', ')}</p>
     `;
   } catch (e) {
     $('rates-result').innerHTML = `<div class="error-box" style="display:block">レート情報の取得に失敗しました: ${esc(e.message)}</div>`;

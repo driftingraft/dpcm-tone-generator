@@ -12,14 +12,14 @@ from dpcm_generator import (
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     get_valid_dpcm_sample_counts, find_nearest_valid_sample_count,
     generate_preview, generate_raw_preview, apply_lowpass_filter,
-    mix_sub_octave,
+    mix_sub_octave, generate_note_range,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
-    validate_positive_int, validate_non_negative_int,
+    validate_note_name, validate_positive_int, validate_non_negative_int,
     validate_non_negative_float, validate_rate_index, validate_readable_file,
 )
 
-# 生成する音階の範囲
+# 生成する音階の範囲（デフォルト）
 NOTES = [
     # オクターブ2
     "C2", "C#2", "D2", "D#2", "E2", "F2", "F#2", "G2", "G#2", "A2", "A#2", "B2",
@@ -29,16 +29,18 @@ NOTES = [
     "C4", "C#4", "D4", "D#4", "E4", "F4",
 ]
 
-def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False, lowpass_cutoff: float = None, lowpass_order: int = 63, wav_sample_rate: int = None, no_auto_lowpass: bool = False, sub_octave: float = 0.0):
+def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_waveform: list[float] = None, cycles: int = 1, volume: float = 1.0, auto_start: bool = False, loop_match: bool = False, fit: bool = False, prefer_quality: bool = False, min_rate_index: int = 0, preview: bool = False, preview_loops: int = 4, raw_preview: bool = False, raw_preview_loops: int = None, warmup: bool = False, lowpass_cutoff: float = None, lowpass_order: int = 63, wav_sample_rate: int = None, no_auto_lowpass: bool = False, sub_octave: float = 0.0, notes: list[str] = None):
     """
     指定波形で全音階を生成
     custom_waveform が指定されている場合はそれを使用
+    notes を指定するとその音階リストを生成（省略時はNOTES＝C2〜F4）
 
     Returns:
         (成功リスト, 失敗リスト)
         成功リスト: 生成に成功したノートの情報
         失敗リスト: 失敗したノートと理由のタプル
     """
+    target_notes = notes if notes is not None else NOTES
     try:
         os.makedirs(output_dir, exist_ok=True)
     except PermissionError:
@@ -51,7 +53,7 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
     results = []
     failures = []
 
-    for note in NOTES:
+    for note in target_notes:
         try:
             target_freq = freq_from_note(note)
 
@@ -250,6 +252,14 @@ def main():
     parser.add_argument('--name', '-n',
                         type=str,
                         help='カスタム波形使用時のファイル名プレフィックス（デフォルト: custom）')
+    parser.add_argument('--start',
+                        type=validate_note_name,
+                        default='C2',
+                        help='生成する音階の開始ノート（デフォルト: C2）')
+    parser.add_argument('--end',
+                        type=validate_note_name,
+                        default='F4',
+                        help='生成する音階の終了ノート（デフォルト: F4）')
     parser.add_argument('--cycles', '-c',
                         type=validate_positive_int,
                         default=1,
@@ -317,6 +327,11 @@ def main():
 
     args = parser.parse_args()
 
+    # 生成する音階リストを決定
+    notes = generate_note_range(args.start, args.end)
+    if not notes:
+        parser.error(f"開始ノート（{args.start}）は終了ノート（{args.end}）以下にしてください")
+
     # カスタム波形の読み込み
     custom_waveform = None
     wave_type = args.wave
@@ -372,6 +387,7 @@ def main():
         print(f"エラー: {e}", file=sys.stderr)
         sys.exit(1)
 
+    print(f"対象音域: {args.start} 〜 {args.end} ({len(notes)}音階)")
     print(f"出力先: {args.output_dir}")
     if args.cycles > 1:
         print(f"周期数: {args.cycles}")
@@ -412,7 +428,7 @@ def main():
                                  warmup=args.warmup,
                                  lowpass_cutoff=args.lowpass, lowpass_order=args.lowpass_order,
                                  wav_sample_rate=wav_sample_rate, no_auto_lowpass=args.no_auto_lowpass,
-                                 sub_octave=args.sub_octave)
+                                 sub_octave=args.sub_octave, notes=notes)
 
     # 失敗レポート
     if failures:

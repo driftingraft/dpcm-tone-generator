@@ -379,6 +379,12 @@ def handle_batch(p: dict) -> dict:
     raw_preview = bool(p.get('raw_preview'))
     output_dir = (p.get('output_dir') or '').strip()
 
+    start = p.get('start') or 'C2'
+    end = p.get('end') or 'F4'
+    notes = generate_note_range(start, end)
+    if not notes:
+        raise ValueError(f"開始ノート（{start}）は終了ノート（{end}）以下にしてください")
+
     with tempfile.TemporaryDirectory() as tmpdir:
         results, failures = generate_note_set(
             wave_type, tmpdir,
@@ -400,6 +406,7 @@ def handle_batch(p: dict) -> dict:
             wav_sample_rate=wav_sample_rate,
             no_auto_lowpass=bool(p.get('no_auto_lowpass')),
             sub_octave=_float(p, 'sub_octave', 0.0),
+            notes=notes,
         )
 
         failures_out = [{'note': n, 'reason': r} for n, r in failures]
@@ -435,6 +442,8 @@ def handle_batch(p: dict) -> dict:
 
     return {
         'wave_type': wave_type,
+        'start': start,
+        'end': end,
         'results': out_results,
         'failures': failures_out,
         'defines': defines,

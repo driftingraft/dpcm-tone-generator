@@ -12,7 +12,7 @@
 - **音量調整**: 波形の振幅を調整可能
 - **ループ最適化**: 開始値の自動設定、終端値の調整でシームレスなループを実現
 - **サブオクターブ混合**: 1オクターブ下のサブハーモニックを重ねて低音を補強（周期数を自動で偶数化しループ境界のズレを回避）
-- **バッチ生成**: 全音階（C2〜F4）を一括生成、ppmck用定義ファイルも出力
+- **バッチ生成**: 指定音域の全音階（デフォルト: C2〜F4）を一括生成、ppmck用定義ファイルも出力
 - **サンソフトベース方式**: 最小限のサンプル数で全音階をカバー、メモリ使用量を大幅削減
 - **ブラウザGUI**: 全機能をブラウザから操作可能（波形表示・音声プレビュー・ZIP一括ダウンロード付き）
 
@@ -39,7 +39,7 @@ python dpcm_gui.py
 ローカルWebサーバー（デフォルト: http://127.0.0.1:8765/ ）が起動し、ブラウザが自動で開きます。追加ライブラリは不要です。
 
 - **単一生成**タブ: dpcm_generator.py相当。波形・音程・fitモード等を指定して.dmcを生成。波形グラフ表示、dPCMプレビュー/エンコード前プレビューの再生、ppmck定義例の表示ができます
-- **バッチ生成**タブ: dpcm_batch.py相当。C2〜F4の全音階を一括生成し、各ノートの試聴・ZIP一括ダウンロード・ppmck定義出力ができます
+- **バッチ生成**タブ: dpcm_batch.py相当。指定音域（デフォルト: C2〜F4）の全音階を一括生成し、各ノートの試聴・ZIP一括ダウンロード・ppmck定義出力ができます
 - **サンソフト方式**タブ: dpcm_sunsoft.py相当。分析のみの実行、基本サンプルセット生成、スケールプレビュー再生ができます
 - **レート表**タブ: NTSC dPCMの16種類のサンプルレート一覧
 
@@ -94,8 +94,11 @@ python dpcm_sunsoft.py --wave saw --sub-octave 0.3 --output-dir ./sunsoft_sample
 ### バッチ生成（全音階）
 
 ```bash
-# 30音階分を一括生成
+# 30音階分（デフォルト: C2〜F4）を一括生成
 python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpcm_samples
+
+# 音域を指定して生成（例: C3〜B5）
+python dpcm_batch.py --wave saw --fit --auto-start --start C3 --end B5 --output-dir ./dpcm_samples
 
 # ppmck定義ファイルも自動生成される
 # → ./dpcm_samples/saw_defines.txt
@@ -174,6 +177,8 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 |-----------|--------|------|
 | `--output-dir` | `-o` | 出力ディレクトリ |
 | `--name` | `-n` | カスタム波形使用時のファイル名プレフィックス |
+| `--start` | | 生成する音階の開始ノート（デフォルト: C2） |
+| `--end` | | 生成する音階の終了ノート（デフォルト: F4） |
 | `--dpcm-start-index` | | ppmck定義の連番開始番号（デフォルト: 0） |
 | `--dpcm-path` | | ppmck定義でのdmcファイルパス |
 
