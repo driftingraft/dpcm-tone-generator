@@ -51,6 +51,22 @@ python dpcm_gui.py --no-browser    # ブラウザを自動で開かない
 
 詳しい使い方は **[GUIマニュアル](docs/gui_manual.md)**（スクリーンショット付き）を参照してください。
 
+### Pythonなしで使う（配布パッケージ）
+
+Pythonをインストールしていない一般ユーザー向けに、**インストール不要で起動できる配布パッケージ**を作成できます。
+
+- **Windows版**: 公式の埋め込みPythonを同梱。解凍して `起動.bat` をダブルクリックするだけで動きます（Python導入不要）
+- **Mac版**: システムの `python3` を利用。`起動.command` をダブルクリックで起動します（未導入時はインストール案内を表示）
+
+パッケージの作り方（メンテナ向け）:
+
+```bash
+# Windows版・Mac版のzipを作成（dist/ に出力）
+python packaging/build_package.py --zip
+```
+
+詳細は **[packaging/README.md](packaging/README.md)** を参照してください。
+
 ### 基本的な使い方
 
 ```bash

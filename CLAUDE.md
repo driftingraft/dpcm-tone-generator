@@ -18,6 +18,10 @@ NES dPCM Generator - ファミコン（NES）のdPCMサンプルを生成するP
 - `dpcm_gui.py` - ブラウザGUI用ローカルWebサーバー（3スクリプト全機能をAPI経由で提供）
 - `dpcm_gui.html` - GUIのフロントエンド（単一HTML、`dpcm_gui.py`が配信）
 - `docs/gui_manual.md` - GUIの利用者向けマニュアル（GUIの機能・デフォルト値を変更したら追従が必要。画像は`docs/images/`）
+- `packaging/` - 一般ユーザー向け配布パッケージのビルド一式（Python不要で起動できるWindows/Mac版を生成）
+  - `packaging/build_package.py` - 組み立てスクリプト（埋め込みPython同梱のWin版 / python3利用のMac版）
+  - `packaging/launchers/` - `起動.bat`（Win）/`起動.command`（Mac）/`お読みください.txt`（利用者向け）
+  - `packaging/README.md` - ビルド手順（メンテナ向け）
 - `examples/` - サンプルファイル
 
 ### 技術スタック
@@ -55,6 +59,8 @@ python dpcm_gui.py --no-browser
 
 `dpcm_batch.py`と`dpcm_sunsoft.py`は`dpcm_generator.py`から関数をインポートして使用している。
 `dpcm_gui.py`はさらに3ファイル全てから関数をインポートしてWeb APIとして公開している（単一生成は`dpcm_generator.py`のmain()相当の処理を`handle_generate()`で再実装しているため、main()のロジック変更時は`dpcm_gui.py`側も追従が必要）。
+
+配布パッケージ（`packaging/`）は、GUIが依存する`.py`/`.html`を`app/`にまとめて同梱する。**GUIの依存ファイルを増減した場合は`packaging/build_package.py`の`APP_FILES`も更新すること**（現状: `dpcm_gui.py`, `dpcm_gui.html`, `dpcm_generator.py`, `dpcm_batch.py`, `dpcm_sunsoft.py`）。
 
 ```python
 from dpcm_generator import (
