@@ -4,6 +4,16 @@
 
 任意の波形から、指定した音程のdPCMサンプル（.dmc）を生成できます。ループ再生を前提としたベースライン音源の作成に最適化されています。
 
+## はじめての方へ（かんたんに使う）
+
+プログラミングの知識がなくても使えます。
+
+1. **[Releases](https://github.com/driftingraft/dpcm-tone-generator/releases)** から、お使いのOSのパッケージ（Windows / Mac）をダウンロードします。
+2. 解凍して、`Start.bat`（Windows）または `Start.command`（Mac）を **ダブルクリック** します。
+3. ブラウザが自動で開き、そのまま使えます（Windows版は Python のインストール不要）。
+
+詳しい使い方は **[GUI版の説明（マニュアル）](docs/gui_manual.md)** をご覧ください。
+
 ## 特徴
 
 - **複数の入力形式に対応**: 基本波形（saw/triangle/sine/square/pulse）、FDS波形、HEX文字列、WAVファイル

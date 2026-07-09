@@ -4,6 +4,14 @@ A Python tool for generating dPCM samples for the Nintendo Entertainment System 
 
 Generate dPCM samples (.dmc) at specified pitches from arbitrary waveforms. Optimized for creating looping bass/lead sounds.
 
+## Quick start (no coding needed)
+
+1. Download the package for your OS (Windows / Mac) from **[Releases](https://github.com/driftingraft/dpcm-tone-generator/releases)**.
+2. Extract it and **double-click** `Start.bat` (Windows) or `Start.command` (Mac).
+3. Your browser opens and you can start right away (no Python install on Windows).
+
+For a detailed walkthrough, see the **[GUI manual](docs/gui_manual.md)** (in Japanese).
+
 ## Features
 
 - **Multiple input formats**: Basic waveforms (saw/triangle/sine/square/pulse), FDS waveforms, HEX strings, WAV files
