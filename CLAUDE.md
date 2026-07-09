@@ -91,6 +91,17 @@ from dpcm_generator import (
 
 ※ `dpcm_sunsoft.py`の`--dpcm-start-index`は「音階部分（ノート別定義）」の開始番号を指定する（基本サンプル定義とは独立）
 
+### GUIの多言語化（JA/EN）
+
+GUIはブラウザ言語を自動判定し、日本語/英語を切り替える（`dpcm_gui.html`右上のボタン、選択は`localStorage`に記憶）。**表示文言は2箇所で管理しており、片方だけ変えると崩れる**：
+
+- **フロント文言**（ラベル・見出し・ボタン・ステータス等）: `dpcm_gui.html`の`I18N`辞書（`ja`/`en`）。要素の`data-i18n`/`data-i18n-ph`属性、またはJS内の`t('key')`で参照。**キーは必ずja/en両方に追加**する。
+- **サーバー由来の文言**（警告・エラー・fit品質・波形名・失敗理由・ppmckコメント等）: `dpcm_gui.py`の`_MSG`辞書＋`L(lang, ...)`、`localize_reason()`。リクエストの`lang`（既定`ja`）に応じて英/日を返す。GUIは全APIに`lang`を送る。
+
+定義ファイルのコメントは`generate_ppmck_defines()`/`generate_sunsoft_defines()`の`lang`引数（既定`'ja'`）で英/日切替。**CLIは常に既定`'ja'`で従来どおり**（GUIのみ`lang`を渡す）。ppmck定義のフォーマットを変える際は、この英/日の両分岐を揃えること。
+
+新たに日本語文言をGUIレスポンスへ追加した場合は、必ず`_MSG`（または`localize_reason`）に英訳を用意する。
+
 ### 動作確認
 
 変更後は全てのスクリプトで動作確認を行う：

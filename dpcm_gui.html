@@ -514,35 +514,8 @@ function setLang(lang) {
   applyI18n();
 }
 
-/* サーバー由来の列挙型文字列をフロントで英語化（自由文の警告等は対象外） */
-function locWave(s) {
-  if (LANG === 'ja' || s == null) return s;
-  let m;
-  if (m = s.match(/^カスタムHEX \((\d+)サンプル\)$/)) return `Custom HEX (${m[1]} samples)`;
-  if (m = s.match(/^FDS \((\d+)サンプル\)$/)) return `FDS (${m[1]} samples)`;
-  if (m = s.match(/^WAV \((\d+)サンプル, (.+?)Hz\)$/)) return `WAV (${m[1]} samples, ${m[2]}Hz)`;
-  return s;
-}
-function locQuality(s) {
-  if (LANG === 'ja' || s == null) return s;
-  if (s === '高品質優先') return 'Prefer quality';
-  if (s === 'サイズ優先') return 'Prefer size';
-  let m = s.match(/^レート下限\$(.+)$/);
-  if (m) return `Min rate $${m[1]}`;
-  return s;
-}
-function locLowpass(s) {
-  if (LANG === 'ja' || s == null) return s;
-  let m = s.match(/^(.+?)Hz \(次数: (\d+)\)$/);
-  if (m) return `${m[1]}Hz (order: ${m[2]})`;
-  return s;
-}
-function locPpmck(s) {
-  if (LANG === 'ja' || s == null) return s;
-  return s
-    .split('; MMLでループ再生する場合:').join('; To loop-play in MML:')
-    .split('; トーンとして鳴らす').join('; play as a tone');
-}
+/* サーバー由来の文字列は lang パラメータ付きで取得するため、
+   バックエンドが既に対象言語で返す（フロントでの再変換は不要）。 */
 
 /* ---------------- タブ切り替え ---------------- */
 document.querySelectorAll('nav button').forEach(btn => {
@@ -744,7 +717,7 @@ async function api(path, params) {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params || {}),
+    body: JSON.stringify(Object.assign({ lang: LANG }, params || {})),
   });
   let data;
   try { data = await res.json(); } catch { data = { error: t('msg_parse_fail') }; }
@@ -883,7 +856,7 @@ $('sg-run').addEventListener('click', () => withBusy($('sg-run'), $('sg-error'),
 function renderSingle(r, outname) {
   const info = r.info;
   const rows = [
-    [t('r_wavetype'), esc(locWave(info.wave_type_display))],
+    [t('r_wavetype'), esc(info.wave_type_display)],
     [t('r_target_pitch'), `${esc(info.note_name)} (${info.target_freq.toFixed(2)} Hz)`],
     [t('r_samplerate'), `$${info.rate_index.toString(16).toUpperCase()} (${info.sample_rate.toFixed(2)} Hz)`],
     [t('r_samples_per_cycle'), info.samples_per_cycle],
@@ -894,13 +867,13 @@ function renderSingle(r, outname) {
     [t('r_filesize'), `${info.file_size} ${t('r_bytes')}`],
     [t('r_startvalue'), info.start_value + (info.auto_start ? t('r_auto_set') : '')],
   ];
-  if (info.fit_mode) rows.push([t('r_fitmode'), t('r_fit_enabled', { q: esc(locQuality(info.quality_str)) })]);
-  if (info.lowpass) rows.push([t('r_lowpass'), esc(locLowpass(info.lowpass))]);
+  if (info.fit_mode) rows.push([t('r_fitmode'), t('r_fit_enabled', { q: esc(info.quality_str) })]);
+  if (info.lowpass) rows.push([t('r_lowpass'), esc(info.lowpass)]);
   if (info.sub_octave > 0) rows.push([t('r_suboctave'), info.sub_octave.toFixed(2)]);
   const flags = [info.loop_match && 'loop-match', info.warmup && 'warmup'].filter(Boolean).join(', ');
   if (flags) rows.push([t('r_options'), flags]);
 
-  const ppmck = locPpmck(r.ppmck);
+  const ppmck = r.ppmck;
   $('sg-result').innerHTML = `
     ${r.warnings.map(wr => `<div class="warn-box">⚠ ${esc(wr)}</div>`).join('')}
     <table class="info">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>

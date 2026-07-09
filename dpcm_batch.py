@@ -199,7 +199,8 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
 
 
 def generate_ppmck_defines(results: list, wave_type: str,
-                           start_index: int = 0, dpcm_path: str = "") -> str:
+                           start_index: int = 0, dpcm_path: str = "",
+                           lang: str = "ja") -> str:
     """
     ppmck用のサンプル定義を生成
 
@@ -208,10 +209,21 @@ def generate_ppmck_defines(results: list, wave_type: str,
         wave_type: 波形タイプ名
         start_index: 連番の開始番号
         dpcm_path: ファイルパスのプレフィックス
+        lang: コメントの言語（'ja'|'en'、既定 'ja'）。GUIの英語表示用。
     """
-    lines = [f"; === {wave_type}波 dPCMサンプル定義 ==="]
-    lines.append("; 注意: 各音階ごとにサンプルレートが異なります")
-    lines.append("")
+    en = (lang == "en")
+    if en:
+        header = f"; === {wave_type} dPCM sample definitions ==="
+        note_line = "; Note: the sample rate differs for each pitch"
+        example_hdr = "; Example (E channel):"
+        example = f"; E @DPCM{start_index} | c4  ; tone via loop playback"
+    else:
+        header = f"; === {wave_type}波 dPCMサンプル定義 ==="
+        note_line = "; 注意: 各音階ごとにサンプルレートが異なります"
+        example_hdr = "; 使用例（Eチャンネル）:"
+        example = f"; E @DPCM{start_index} | c4  ; ループ再生でトーン"
+
+    lines = [header, note_line, ""]
 
     for i, r in enumerate(results):
         note = r['note']
@@ -220,8 +232,8 @@ def generate_ppmck_defines(results: list, wave_type: str,
         lines.append(f'@DPCM{index} = {{ "{filepath}", {r["rate_index"]}, 0, 0, 1 }}  ; {note}')
 
     lines.append("")
-    lines.append("; 使用例（Eチャンネル）:")
-    lines.append(f"; E @DPCM{start_index} | c4  ; ループ再生でトーン")
+    lines.append(example_hdr)
+    lines.append(example)
 
     return "\n".join(lines)
 

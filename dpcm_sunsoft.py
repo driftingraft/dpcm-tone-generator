@@ -444,7 +444,8 @@ def generate_sunsoft_defines(
     end_note: str,
     max_cents_error: float,
     start_index: int = 0,
-    dpcm_path: str = ""
+    dpcm_path: str = "",
+    lang: str = "ja"
 ) -> str:
     """
     ppmck形式の定義ファイルを生成
@@ -452,18 +453,27 @@ def generate_sunsoft_defines(
     Args:
         start_index: 連番の開始番号
         dpcm_path: ファイルパスのプレフィックス
+        lang: コメントの言語（'ja'|'en'、既定 'ja'）。GUIの英語表示用。
     """
+    en = (lang == "en")
     lines = []
 
     # ヘッダー
-    lines.append(f"; === {wave_type} dPCMサンプル定義（サンソフトベース方式） ===")
-    lines.append(f"; 対象音域: {start_note}〜{end_note} ({len(target_notes)}音階)")
-    lines.append(f"; 基本サンプル数: {len(base_samples)}")
-    lines.append(f"; 許容誤差: {max_cents_error} cents")
+    if en:
+        lines.append(f"; === {wave_type} dPCM sample definitions (Sunsoft-base method) ===")
+        lines.append(f"; Range: {start_note}-{end_note} ({len(target_notes)} notes)")
+        lines.append(f"; Base samples: {len(base_samples)}")
+        lines.append(f"; Tolerance: {max_cents_error} cents")
+    else:
+        lines.append(f"; === {wave_type} dPCMサンプル定義（サンソフトベース方式） ===")
+        lines.append(f"; 対象音域: {start_note}〜{end_note} ({len(target_notes)}音階)")
+        lines.append(f"; 基本サンプル数: {len(base_samples)}")
+        lines.append(f"; 許容誤差: {max_cents_error} cents")
     lines.append("")
 
     # 基本サンプル情報（参考用、番号は0から）
-    lines.append("; --- 基本サンプル情報（参考） ---")
+    lines.append("; --- Base sample info (reference) ---" if en
+                 else "; --- 基本サンプル情報（参考） ---")
     base_note_to_idx = {}
     for idx, sample in enumerate(base_samples):
         base_note_to_idx[sample['note']] = idx
@@ -472,12 +482,19 @@ def generate_sunsoft_defines(
     lines.append("")
 
     # ノートマッピング表（コメント）
-    lines.append("; --- ノートマッピング表 ---")
-    lines.append("; 各ノートを再生するには、指定サンプルを指定レートで再生します")
-    lines.append(";")
-    lines.append("; ノート   | サンプル | レート | 誤差(cents)")
+    if en:
+        lines.append("; --- Note mapping table ---")
+        lines.append("; To play each note, play the given sample at the given rate")
+        lines.append(";")
+        lines.append("; Note     | Sample   | Rate   | Error(cents)")
+    else:
+        lines.append("; --- ノートマッピング表 ---")
+        lines.append("; 各ノートを再生するには、指定サンプルを指定レートで再生します")
+        lines.append(";")
+        lines.append("; ノート   | サンプル | レート | 誤差(cents)")
     lines.append("; ---------|----------|--------|------------")
 
+    uncoverable = "(not coverable)" if en else "(カバー不可)"
     for note in target_notes:
         if note in note_mapping:
             base_note, rate_idx, error = note_mapping[note]
@@ -485,14 +502,19 @@ def generate_sunsoft_defines(
             error_str = f"{error:+.1f}"
             lines.append(f"; {note:8s} | @DPCM{sample_idx}  | ${rate_idx:X}     | {error_str}")
         else:
-            lines.append(f"; {note:8s} | (カバー不可)")
+            lines.append(f"; {note:8s} | {uncoverable}")
     lines.append("")
 
     # ノート別の定義（各ノートに直接@DPCM番号を割り当て）
-    lines.append("; --- ノート別サンプル定義 ---")
-    lines.append(f"; 各ノートに対応する定義（@DPCM番号{start_index}以降）")
+    if en:
+        lines.append("; --- Per-note sample definitions ---")
+        lines.append(f"; Definitions for each note (@DPCM numbers from {start_index})")
+    else:
+        lines.append("; --- ノート別サンプル定義 ---")
+        lines.append(f"; 各ノートに対応する定義（@DPCM番号{start_index}以降）")
     lines.append("")
 
+    err_label = "error" if en else "誤差"
     dpcm_num = start_index
     for note in target_notes:
         if note in note_mapping:
@@ -501,7 +523,7 @@ def generate_sunsoft_defines(
             sample_info = next((s for s in base_samples if s['note'] == base_note), None)
             if sample_info:
                 filepath = f"{dpcm_path}{sample_info['filename']}"
-                lines.append(f"@DPCM{dpcm_num} = {{ \"{filepath}\", {rate_idx}, 0, 0, 1 }}  ; {note} (誤差: {error:+.1f}cents)")
+                lines.append(f"@DPCM{dpcm_num} = {{ \"{filepath}\", {rate_idx}, 0, 0, 1 }}  ; {note} ({err_label}: {error:+.1f}cents)")
                 dpcm_num += 1
 
     return "\n".join(lines)

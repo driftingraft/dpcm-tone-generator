@@ -16,6 +16,7 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import struct
 import sys
@@ -76,6 +77,116 @@ def _opt_float(p: dict, key: str):
     if value is None or value == '':
         return None
     return float(value)
+
+
+# =============================================================================
+# GUI表示メッセージの多言語化（GUIレスポンス専用。CLI側の文言には影響しない）
+#   - リクエストの 'lang'（'ja'|'en'、既定 'ja'）に応じて英/日を返す
+#   - 自由文（警告・エラー・失敗理由・ppmckコメント等）が対象
+# =============================================================================
+
+def _get_lang(p: dict) -> str:
+    return 'en' if (p.get('lang') == 'en') else 'ja'
+
+
+_MSG = {
+    'ja': {
+        # wave_type_display（カスタムソース）
+        'wt_hex': 'カスタムHEX ({n}サンプル)',
+        'wt_fds': 'FDS ({n}サンプル)',
+        'wt_wav': 'WAV ({n}サンプル, {rate}Hz)',
+        # ローパス
+        'lp_manual': '{cut}Hz (次数: {order})',
+        'lp_auto': '{cut}Hz (自動, 次数: {order})',
+        # fit品質
+        'q_minrate': 'レート下限${idx}',
+        'q_quality': '高品質優先',
+        'q_size': 'サイズ優先',
+        # 警告
+        'w_suboct_no_even': '偶数周期の解が見つからず、サブオクターブがループ境界でずれる可能性があります',
+        'w_suboct_adjust': 'サブオクターブ整合のため周期数を偶数に調整: {n}',
+        'w_volume_clip': '音量{pct}: クリッピングの可能性があります',
+        'w_odd_cycles': '周期数が奇数（{n}）のため、サブオクターブがループ境界でずれます',
+        # エラー
+        'e_wav_not_selected': 'WAVファイルが選択されていません',
+        'e_wav_decode': 'WAVデータのデコードに失敗しました',
+        'e_param_not_found': '適切なパラメータが見つかりませんでした',
+        'e_freq_too_high': 'このサンプルレートでは音程が高すぎます',
+        'e_rate_not_found': '適切なサンプルレートが見つかりませんでした',
+        'e_start_end_order': '開始ノート（{start}）は終了ノート（{end}）以下にしてください',
+        'e_no_files': '生成されたファイルがありません（{detail}）',
+        'e_no_samples': '生成されたサンプルがありません（{detail}）',
+        'e_bad_request': 'リクエスト形式が不正です',
+        'e_server': 'サーバーエラー: {e}',
+        # ppmckコメント（単一生成の例）
+        'ppmck_loop': '; MMLでループ再生する場合:',
+        'ppmck_tone': '; トーンとして鳴らす',
+    },
+    'en': {
+        'wt_hex': 'Custom HEX ({n} samples)',
+        'wt_fds': 'FDS ({n} samples)',
+        'wt_wav': 'WAV ({n} samples, {rate}Hz)',
+        'lp_manual': '{cut}Hz (order: {order})',
+        'lp_auto': '{cut}Hz (auto, order: {order})',
+        'q_minrate': 'Min rate ${idx}',
+        'q_quality': 'Prefer quality',
+        'q_size': 'Prefer size',
+        'w_suboct_no_even': 'No even-cycle solution found; the sub-octave may drift at the loop boundary',
+        'w_suboct_adjust': 'Adjusted cycles to an even number for sub-octave alignment: {n}',
+        'w_volume_clip': 'Volume {pct}: clipping may occur',
+        'w_odd_cycles': 'Odd cycle count ({n}); the sub-octave drifts at the loop boundary',
+        'e_wav_not_selected': 'No WAV file selected',
+        'e_wav_decode': 'Failed to decode WAV data',
+        'e_param_not_found': 'No suitable parameters were found',
+        'e_freq_too_high': 'The pitch is too high for this sample rate',
+        'e_rate_not_found': 'No suitable sample rate was found',
+        'e_start_end_order': 'Start note ({start}) must be at or below the end note ({end})',
+        'e_no_files': 'No files were generated ({detail})',
+        'e_no_samples': 'No samples were generated ({detail})',
+        'e_bad_request': 'Invalid request format',
+        'e_server': 'Server error: {e}',
+        'ppmck_loop': '; To loop-play in MML:',
+        'ppmck_tone': '; play as a tone',
+    },
+}
+
+
+def L(lang: str, key: str, **kw) -> str:
+    d = _MSG.get(lang) or _MSG['ja']
+    s = d.get(key) or _MSG['ja'].get(key) or key
+    return s.format(**kw) if kw else s
+
+
+# 共有関数（dpcm_batch/dpcm_sunsoft）が返す失敗理由・例外文をGUI用に英訳する。
+# 既知パターンのみ対応し、未知の文字列はそのまま返す。
+_REASON_EXACT = {
+    '適切なパラメータが見つかりません': 'No suitable parameters found',
+    '適切なサンプルレートが見つかりません': 'No suitable sample rate found',
+    'WAVファイルが選択されていません': 'No WAV file selected',
+    'WAVデータのデコードに失敗しました': 'Failed to decode WAV data',
+}
+_REASON_PREFIX = [
+    ('出力ディレクトリの作成権限がありません: ', 'No permission to create the output directory: '),
+    ('出力ディレクトリの作成に失敗: ', 'Failed to create the output directory: '),
+    ('ファイル書き込み権限がありません: ', 'No permission to write the file: '),
+    ('ファイル書き込みエラー: ', 'File write error: '),
+    ('カバーできないノート: ', 'Uncoverable notes: '),
+]
+
+
+def localize_reason(lang: str, reason: str) -> str:
+    """共有関数由来の日本語の失敗理由/例外文を英訳（未知はそのまま）。"""
+    if lang != 'en' or not reason:
+        return reason
+    if reason in _REASON_EXACT:
+        return _REASON_EXACT[reason]
+    for jp, en in _REASON_PREFIX:
+        if reason.startswith(jp):
+            return en + reason[len(jp):]
+    m = re.match(r'^許容誤差(.+?)cents内で生成可能な基本サンプル候補がありません$', reason)
+    if m:
+        return f'No base-sample candidates can be generated within {m.group(1)} cents of tolerance'
+    return reason
 
 
 def wav_bytes_pcm7(samples: list[int], sample_rate: float, loops: int = 1) -> bytes:
@@ -184,6 +295,7 @@ def read_file_b64(path: str) -> str:
 # =============================================================================
 
 def handle_generate(p: dict) -> dict:
+    lang = _get_lang(p)
     warnings = []
 
     source = p.get('source', 'wave')
@@ -196,16 +308,16 @@ def handle_generate(p: dict) -> dict:
     lowpass_info = None
 
     if source == 'hex':
-        wave_type_display = f"カスタムHEX ({len(custom_waveform)}サンプル)"
+        wave_type_display = L(lang, 'wt_hex', n=len(custom_waveform))
     elif source == 'fds':
-        wave_type_display = f"FDS ({len(custom_waveform)}サンプル)"
+        wave_type_display = L(lang, 'wt_fds', n=len(custom_waveform))
     elif source == 'wav':
-        wave_type_display = f"WAV ({len(custom_waveform)}サンプル, {wav_sample_rate}Hz)"
+        wave_type_display = L(lang, 'wt_wav', n=len(custom_waveform), rate=wav_sample_rate)
         # 明示的なカットオフ指定はこの時点で適用（自動はレート確定後）
         if not no_auto_lowpass and lowpass_cutoff:
             custom_waveform = apply_lowpass_filter(
                 custom_waveform, wav_sample_rate, lowpass_cutoff, lowpass_order)
-            lowpass_info = f"{lowpass_cutoff:.0f}Hz (次数: {lowpass_order})"
+            lowpass_info = L(lang, 'lp_manual', cut=f"{lowpass_cutoff:.0f}", order=lowpass_order)
     else:
         wave_type_display = wave_type
 
@@ -240,32 +352,32 @@ def handle_generate(p: dict) -> dict:
                                       loop_match_reserve=loop_reserve,
                                       require_even_cycles=require_even)
         if result is None and require_even:
-            warnings.append("偶数周期の解が見つからず、サブオクターブがループ境界でずれる可能性があります")
+            warnings.append(L(lang, 'w_suboct_no_even'))
             result = find_best_fit_params(target_freq, min_cycles=num_cycles,
                                           max_cycles=max(num_cycles * 4, 64),
                                           prefer_quality=quality,
                                           min_rate_index=min_rate_index,
                                           loop_match_reserve=loop_reserve)
         if result is None:
-            raise ValueError('適切なパラメータが見つかりませんでした')
+            raise ValueError(L(lang, 'e_param_not_found'))
         sample_rate, rate_index, num_samples, num_cycles, total_samples = result
     elif rate_index_param is not None:
         rate_index = rate_index_param
         sample_rate = SAMPLE_RATES_NTSC[rate_index]
         num_samples = round(sample_rate / target_freq)
         if num_samples < 1:
-            raise ValueError('このサンプルレートでは音程が高すぎます')
+            raise ValueError(L(lang, 'e_freq_too_high'))
         if sub_octave > 0 and num_cycles % 2 != 0:
             num_cycles += 1
-            warnings.append(f"サブオクターブ整合のため周期数を偶数に調整: {num_cycles}")
+            warnings.append(L(lang, 'w_suboct_adjust', n=num_cycles))
         total_samples = num_samples * num_cycles
     else:
         sample_rate, rate_index, num_samples = find_best_sample_rate(target_freq)
         if sample_rate is None:
-            raise ValueError('適切なサンプルレートが見つかりませんでした')
+            raise ValueError(L(lang, 'e_rate_not_found'))
         if sub_octave > 0 and num_cycles % 2 != 0:
             num_cycles += 1
-            warnings.append(f"サブオクターブ整合のため周期数を偶数に調整: {num_cycles}")
+            warnings.append(L(lang, 'w_suboct_adjust', n=num_cycles))
         total_samples = num_samples * num_cycles
 
     actual_freq = sample_rate / num_samples
@@ -277,7 +389,7 @@ def handle_generate(p: dict) -> dict:
         auto_cutoff = sample_rate * 0.4
         custom_waveform = apply_lowpass_filter(
             custom_waveform, wav_sample_rate, auto_cutoff, lowpass_order)
-        lowpass_info = f"{auto_cutoff:.0f}Hz (自動, 次数: {lowpass_order})"
+        lowpass_info = L(lang, 'lp_auto', cut=f"{auto_cutoff:.0f}", order=lowpass_order)
 
     # 波形生成（1周期分）
     if custom_waveform:
@@ -289,7 +401,7 @@ def handle_generate(p: dict) -> dict:
     if volume != 1.0:
         waveform_1cycle = adjust_volume(waveform_1cycle, volume)
         if volume > 1.0:
-            warnings.append(f"音量{volume:.0%}: クリッピングの可能性があります")
+            warnings.append(L(lang, 'w_volume_clip', pct=f"{volume:.0%}"))
 
     # 複数周期分に拡張（warmup有効時は助走用に波形の1周期分を先頭に追加。
     # サブオクターブ混合時は波形の周期が2倍になるため2周期分）
@@ -299,7 +411,7 @@ def handle_generate(p: dict) -> dict:
     # サブオクターブ混合
     if sub_octave > 0:
         if num_cycles % 2 != 0:
-            warnings.append(f"周期数が奇数（{num_cycles}）のため、サブオクターブがループ境界でずれます")
+            warnings.append(L(lang, 'w_odd_cycles', n=num_cycles))
         waveform = mix_sub_octave(waveform, num_samples, wave_type, sub_octave,
                                   custom_waveform=custom_waveform if custom_waveform else None)
 
@@ -318,11 +430,11 @@ def handle_generate(p: dict) -> dict:
 
     if fit_mode:
         if min_rate_index:
-            quality_str = f"レート下限${min_rate_index:X}"
+            quality_str = L(lang, 'q_minrate', idx=f"{min_rate_index:X}")
         elif quality:
-            quality_str = "高品質優先"
+            quality_str = L(lang, 'q_quality')
         else:
-            quality_str = "サイズ優先"
+            quality_str = L(lang, 'q_size')
     else:
         quality_str = None
 
@@ -331,8 +443,8 @@ def handle_generate(p: dict) -> dict:
     dpcm_path = p.get('dpcm_path') or ''
     filename = (p.get('output_name') or '').strip() or 'output.dmc'
     ppmck = (f'@DPCM{dpcm_index} = {{ "{dpcm_path}{filename}", {rate_index}, 0, 0, 1 }}\n\n'
-             f'; MMLでループ再生する場合:\n'
-             f'E @DPCM{dpcm_index} | c   ; トーンとして鳴らす')
+             f'{L(lang, "ppmck_loop")}\n'
+             f'E @DPCM{dpcm_index} | c   {L(lang, "ppmck_tone")}')
 
     return {
         'info': {
@@ -373,6 +485,7 @@ def handle_generate(p: dict) -> dict:
 # =============================================================================
 
 def handle_batch(p: dict) -> dict:
+    lang = _get_lang(p)
     custom_waveform, wav_sample_rate = resolve_custom_waveform(p)
     wave_type = resolve_wave_type_name(p)
     include_preview = bool(p.get('include_preview'))
@@ -383,7 +496,7 @@ def handle_batch(p: dict) -> dict:
     end = p.get('end') or 'F4'
     notes = generate_note_range(start, end)
     if not notes:
-        raise ValueError(f"開始ノート（{start}）は終了ノート（{end}）以下にしてください")
+        raise ValueError(L(lang, 'e_start_end_order', start=start, end=end))
 
     with tempfile.TemporaryDirectory() as tmpdir:
         results, failures = generate_note_set(
@@ -409,14 +522,15 @@ def handle_batch(p: dict) -> dict:
             notes=notes,
         )
 
-        failures_out = [{'note': n, 'reason': r} for n, r in failures]
+        failures_out = [{'note': n, 'reason': localize_reason(lang, r)} for n, r in failures]
         if not results:
             detail = '; '.join(f"{f['note'] or ''}: {f['reason']}" for f in failures_out)
-            raise ValueError(f'生成されたファイルがありません（{detail}）')
+            raise ValueError(L(lang, 'e_no_files', detail=detail))
 
         defines = generate_ppmck_defines(results, wave_type,
                                          start_index=_int(p, 'dpcm_start_index', 0),
-                                         dpcm_path=p.get('dpcm_path') or '')
+                                         dpcm_path=p.get('dpcm_path') or '',
+                                         lang=lang)
         defines_name = f"{wave_type}_defines.txt"
         with open(os.path.join(tmpdir, defines_name), 'w') as f:
             f.write(defines)
@@ -512,6 +626,7 @@ def handle_sunsoft_analyze(p: dict) -> dict:
 
 
 def handle_sunsoft_generate(p: dict) -> dict:
+    lang = _get_lang(p)
     custom_waveform, wav_sample_rate = resolve_custom_waveform(p)
     wave_type = resolve_wave_type_name(p)
     prefix = p.get('prefix') if p.get('prefix') is not None else 'sunsoft_'
@@ -544,15 +659,16 @@ def handle_sunsoft_generate(p: dict) -> dict:
             sub_octave=_float(p, 'sub_octave', 0.0),
         )
 
-        failures_out = [{'note': n, 'reason': r} for n, r in failures]
+        failures_out = [{'note': n, 'reason': localize_reason(lang, r)} for n, r in failures]
         if not samples:
             detail = '; '.join(f"{f['note'] or ''}: {f['reason']}" for f in failures_out)
-            raise ValueError(f'生成されたサンプルがありません（{detail}）')
+            raise ValueError(L(lang, 'e_no_samples', detail=detail))
 
         defines = generate_sunsoft_defines(
             samples, note_mapping, target_notes, wave_type, start, end, max_error,
             start_index=_int(p, 'dpcm_start_index', 0),
-            dpcm_path=p.get('dpcm_path') or '')
+            dpcm_path=p.get('dpcm_path') or '',
+            lang=lang)
         defines_name = f"{prefix}{wave_type}_defines.txt"
         with open(os.path.join(tmpdir, defines_name), 'w', encoding='utf-8') as f:
             f.write(defines)
@@ -569,7 +685,7 @@ def handle_sunsoft_generate(p: dict) -> dict:
                     auto_start=bool(p.get('auto_start')))
                 scale_wav_b64 = read_file_b64(scale_path)
             except ValueError as e:
-                scale_error = str(e)
+                scale_error = localize_reason(lang, str(e))
 
         out_samples = []
         base_note_to_idx = {}
@@ -668,17 +784,21 @@ class GuiHandler(BaseHTTPRequestHandler):
         if handler is None:
             self._send_json({'error': 'not found'}, 404)
             return
+        lang = 'ja'
         try:
             length = int(self.headers.get('Content-Length') or 0)
             params = json.loads(self.rfile.read(length) or b'{}')
             if not isinstance(params, dict):
-                raise ValueError('リクエスト形式が不正です')
+                raise ValueError(L('ja', 'e_bad_request'))
+            lang = _get_lang(params)
             result = handler(params)
             self._send_json(result)
         except (ValueError, KeyError, TypeError, FileNotFoundError) as e:
-            self._send_json({'error': str(e)}, 400)
+            # ハンドラで組み立てたメッセージは既に対象言語。共有関数由来の
+            # 日本語例外文はここで英訳のフォールバックを試みる。
+            self._send_json({'error': localize_reason(lang, str(e))}, 400)
         except Exception as e:
-            self._send_json({'error': f'サーバーエラー: {e}'}, 500)
+            self._send_json({'error': L(lang, 'e_server', e=e)}, 500)
 
     def log_message(self, fmt, *args):
         # APIアクセスログは1行だけ簡潔に
