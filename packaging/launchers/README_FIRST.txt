@@ -60,5 +60,6 @@ Entertainment System (NES / Famicom), right from your browser.
  Author / Contact
 -----------------------------------------------------
  漂流いかだ / driftingraft  (Circle: 時遊戯画 / Jiyugiga)
-   GitHub : https://github.com/driftingraft
-   X      : https://x.com/KOR_jiyugiga
+   Website : https://jiyugiga.sakura.ne.jp/
+   GitHub  : https://github.com/driftingraft
+   X       : https://x.com/KOR_jiyugiga

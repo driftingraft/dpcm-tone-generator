@@ -323,6 +323,7 @@ E @DPCM0 | c   ; dPCMをトーンとして再生（ループ）
 ## 作者・連絡先
 
 - **漂流いかだ**（サークル: 時遊戯画 / Jiyugiga）
+- Webサイト: [時遊戯画](https://jiyugiga.sakura.ne.jp/)
 - GitHub: https://github.com/driftingraft
 - X (Twitter): [@KOR_jiyugiga](https://x.com/KOR_jiyugiga)
 
