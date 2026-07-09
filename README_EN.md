@@ -52,8 +52,8 @@ python dpcm_gui.py --no-browser    # do not open the browser automatically
 # Generate a sawtooth wave at C3
 python dpcm_generator.py --wave saw --note C3 --output saw_c3.dmc
 
-# Recommended: fit mode + auto-start
-python dpcm_generator.py --wave saw --note C3 --fit --auto-start --output saw_c3.dmc
+# Recommended: fit mode + auto-start + warmup
+python dpcm_generator.py --wave saw --note C3 --fit --auto-start --warmup --output saw_c3.dmc
 ```
 
 ### From FDS Waveform
@@ -77,7 +77,7 @@ python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --volu
 
 ```bash
 # Generate 30 notes at once
-python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpcm_samples
+python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --warmup --output-dir ./dpcm_samples
 
 # ppmck definition file is also generated
 # → ./dpcm_samples/saw_defines.txt
@@ -122,19 +122,19 @@ In addition to the above:
 ### Highest Quality (larger size)
 
 ```bash
-python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto-start --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto-start --warmup --output output.dmc
 ```
 
 ### Balanced (recommended)
 
 ```bash
-python dpcm_generator.py --wave saw --note C3 --fit --cycles 8 --auto-start --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --fit --cycles 8 --auto-start --warmup --output output.dmc
 ```
 
 ### Smallest Size
 
 ```bash
-python dpcm_generator.py --wave saw --note C3 --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --loop-match --output output.dmc
 ```
 
 ## Technical Details
@@ -157,6 +157,15 @@ python dpcm_generator.py --wave saw --note C3 --output output.dmc
 ### The --auto-start Effect
 
 dPCM normally starts at value 64 (center). If your waveform starts at 0, there's a "descent" period while catching up to the target, causing noise. `--auto-start` begins at the waveform's first value, avoiding this issue.
+
+### --warmup vs --loop-match
+
+Both options smooth the loop boundary.
+
+- `--warmup`: repeatedly simulates one waveform period as a run-up until the encoder state reaches steady state, then uses the converged value as the start value (the run-up itself is not written to the output). **In fit mode this alone guarantees the file's end value equals its start value**, producing a perfect loop
+- `--loop-match`: appends correction bits at the end of the file to bring the end value back to the start value. Useful outside fit mode (e.g., with `--rate-index`), where padding to a valid length leaves a residual mismatch at the boundary
+
+**Recommendation**: use `--warmup` with fit mode, and `--loop-match` when not using fit mode. The GUI enables warmup by default.
 
 ## Usage with ppmck
 

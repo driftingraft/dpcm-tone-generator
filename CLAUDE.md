@@ -36,10 +36,10 @@ NES dPCM Generator - ファミコン（NES）のdPCMサンプルを生成するP
 
 ```bash
 # 単一ファイル生成（推奨設定）
-python dpcm_generator.py --wave saw --note C3 --fit --auto-start --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --fit --auto-start --warmup --output output.dmc
 
 # バッチ生成
-python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpcm_samples
+python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --warmup --output-dir ./dpcm_samples
 
 # サンプルレート情報表示
 python dpcm_generator.py --info

@@ -55,8 +55,8 @@ python dpcm_gui.py --no-browser    # ブラウザを自動で開かない
 # ノコギリ波でC3の音を生成
 python dpcm_generator.py --wave saw --note C3 --output saw_c3.dmc
 
-# 推奨設定：fitモード + auto-start
-python dpcm_generator.py --wave saw --note C3 --fit --auto-start --output saw_c3.dmc
+# 推奨設定：fitモード + auto-start + warmup
+python dpcm_generator.py --wave saw --note C3 --fit --auto-start --warmup --output saw_c3.dmc
 ```
 
 ### FDS波形から生成
@@ -95,10 +95,10 @@ python dpcm_sunsoft.py --wave saw --sub-octave 0.3 --output-dir ./sunsoft_sample
 
 ```bash
 # 30音階分（デフォルト: C2〜F4）を一括生成
-python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --output-dir ./dpcm_samples
+python dpcm_batch.py --wave saw --fit --cycles 8 --auto-start --warmup --output-dir ./dpcm_samples
 
 # 音域を指定して生成（例: C3〜B5）
-python dpcm_batch.py --wave saw --fit --auto-start --start C3 --end B5 --output-dir ./dpcm_samples
+python dpcm_batch.py --wave saw --fit --auto-start --warmup --start C3 --end B5 --output-dir ./dpcm_samples
 
 # ppmck定義ファイルも自動生成される
 # → ./dpcm_samples/saw_defines.txt
@@ -113,7 +113,7 @@ python dpcm_batch.py --wave saw --fit --auto-start --start C3 --end B5 --output-
 python dpcm_sunsoft.py --analyze-only --start C2 --end F4
 
 # サンプル生成
-python dpcm_sunsoft.py --wave saw --start C2 --end F4 --fit --auto-start --output-dir ./sunsoft_samples
+python dpcm_sunsoft.py --wave saw --start C2 --end F4 --fit --auto-start --warmup --output-dir ./sunsoft_samples
 
 # 許容誤差を厳しくする（デフォルト25セント）
 python dpcm_sunsoft.py --wave saw --start C2 --end F4 --max-error 15 --fit --output-dir ./sunsoft_samples
@@ -212,7 +212,7 @@ python dpcm_sunsoft.py --analyze-only --start C2 --end E4 --max-error 50 --size-
 ### 最高品質（サイズ大）
 
 ```bash
-python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto-start --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto-start --warmup --output output.dmc
 ```
 
 ### バランス重視（推奨）
@@ -221,19 +221,19 @@ python dpcm_generator.py --wave saw --note C3 --fit --quality --cycles 16 --auto
 
 ```bash
 # レート$8以上で最小サイズを選択
-python dpcm_generator.py --wave saw --note C3 --fit --min-rate-index 8 --auto-start --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --fit --min-rate-index 8 --auto-start --warmup --output output.dmc
 ```
 
 ### サイズ優先
 
 ```bash
-python dpcm_generator.py --wave saw --note C3 --fit --auto-start --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --fit --auto-start --warmup --output output.dmc
 ```
 
 ### サイズ最小（fitなし）
 
 ```bash
-python dpcm_generator.py --wave saw --note C3 --output output.dmc
+python dpcm_generator.py --wave saw --note C3 --loop-match --output output.dmc
 ```
 
 ## 技術的な詳細
@@ -256,6 +256,15 @@ python dpcm_generator.py --wave saw --note C3 --output output.dmc
 ### --auto-start の効果
 
 dPCMは通常、開始値64（中央値）から始まります。波形が0から始まる場合、目標値に追いつくまでの「降下区間」がノイズの原因になります。`--auto-start`を使うと波形の最初の値から開始するため、この問題を回避できます。
+
+### --warmup と --loop-match の使い分け
+
+どちらもループ境界を滑らかにするためのオプションです。
+
+- `--warmup`: 波形の1周期分を助走として、エンコーダの状態が定常化するまで繰り返しシミュレートし、収束した値を開始値に採用します（助走部分は出力に含まれません）。**fitモードではファイル終端値が開始値に必ず一致する**ため、これだけで完全なループになります（合計サンプル数が常に偶数のため、「1周期サンプル数と周期数が共に奇数」というズレの残る組み合わせが構造的に存在しません）
+- `--loop-match`: ファイル終端に補正ビットを追加して、終端値を開始値へ戻します。fitモードを使わない場合（レート直指定など）は有効長へのパディングで境界にズレが残るため、こちらが役立ちます
+
+**推奨**: fitモードでは`--warmup`を、fitを使わない場合は`--loop-match`を使用してください。GUIではウォームアップが標準で有効になっています。
 
 ## ppmckでの使用例
 
