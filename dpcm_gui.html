@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NES dPCM Generator GUI</title>
+<style>
+  :root {
+    --bg: #14161c;
+    --panel: #1d2029;
+    --panel2: #242836;
+    --border: #363c4e;
+    --text: #e8eaf2;
+    --muted: #9aa1b5;
+    --accent: #e6584a;
+    --accent2: #4ac3e6;
+    --ok: #6fd08c;
+    --warn: #e6c14a;
+    --err: #ff7b6e;
+    font-size: 15px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+  code, .mono, pre, textarea, input, select { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 2px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 1.1rem; margin: 0; letter-spacing: .04em; }
+  header h1 .dot { color: var(--accent); }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  nav button {
+    background: var(--panel2); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 14px; cursor: pointer; font-size: .92rem;
+  }
+  nav button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  nav button:hover:not(.active) { color: var(--text); }
+  header .lang-btn {
+    margin-left: auto;
+    background: var(--panel2); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 14px; cursor: pointer; font-size: .92rem;
+  }
+  header .lang-btn:hover { color: var(--text); border-color: var(--accent2); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 18px 20px 60px; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+
+  .layout { display: grid; grid-template-columns: 400px 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+  fieldset {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; margin: 0 0 14px;
+  }
+  legend { padding: 0 8px; color: var(--accent2); font-weight: 600; font-size: .9rem; }
+  label { display: block; margin: 6px 0 2px; color: var(--muted); font-size: .85rem; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 110px; }
+  .checks label {
+    display: flex; align-items: center; gap: 7px; margin: 5px 0;
+    color: var(--text); font-size: .9rem; cursor: pointer;
+  }
+  .checks input { accent-color: var(--accent); width: 15px; height: 15px; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; background: #12141b; color: var(--text);
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 6px 8px; font-size: .9rem;
+  }
+  input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent2); }
+  textarea { resize: vertical; min-height: 64px; }
+  .hint { color: var(--muted); font-size: .78rem; margin-top: 2px; }
+
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 10px 22px; font-size: 1rem; font-weight: 700; cursor: pointer;
+    letter-spacing: .05em;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .5; cursor: wait; }
+  .btn.secondary { background: var(--panel2); border: 1px solid var(--border); font-weight: 500; }
+  .btn.small { padding: 5px 12px; font-size: .85rem; font-weight: 600; }
+
+  .result-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .placeholder { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .error-box {
+    display: none; background: #3a2024; border: 1px solid var(--err); color: var(--err);
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; white-space: pre-wrap;
+  }
+  .warn-box {
+    background: #37321c; border: 1px solid var(--warn); color: var(--warn);
+    border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: .88rem;
+  }
+  .ok-box {
+    background: #1e3226; border: 1px solid var(--ok); color: var(--ok);
+    border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: .88rem;
+  }
+
+  table.info { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  table.info th, table.info td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--border); }
+  table.info th { color: var(--muted); font-weight: 500; white-space: nowrap; width: 11em; }
+
+  table.list { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  table.list th, table.list td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  table.list th { color: var(--accent2); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  table.list tr:hover td { background: var(--panel2); }
+  .scrollbox { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+
+  canvas.wave { width: 100%; height: 200px; background: #0d0f14; border: 1px solid var(--border); border-radius: 6px; }
+  audio { width: 100%; height: 34px; margin-top: 4px; }
+  pre.code {
+    background: #0d0f14; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; overflow: auto; font-size: .84rem; white-space: pre; margin: 6px 0;
+  }
+  h3.sec { font-size: .95rem; color: var(--accent2); margin: 18px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .cents-ok { color: var(--ok); }
+  .cents-warn { color: var(--warn); }
+  .cents-bad { color: var(--err); }
+  .desc { color: var(--muted); font-size: .88rem; margin: 4px 0 14px; }
+  .play-btn {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--accent2);
+    border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: .85rem;
+  }
+  .play-btn:hover { border-color: var(--accent2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>NES dPCM Generator <span class="dot">●</span> GUI</h1>
+  <nav>
+    <button data-tab="single" class="active" data-i18n="tab_single">単一生成</button>
+    <button data-tab="batch" data-i18n="tab_batch">バッチ生成</button>
+    <button data-tab="sunsoft" data-i18n="tab_sunsoft">サンソフト方式</button>
+    <button data-tab="rates" data-i18n="tab_rates">レート表</button>
+  </nav>
+  <button id="lang-btn" class="lang-btn" type="button">English</button>
+</header>
+<main>
+
+<!-- ======================= 単一生成 ======================= -->
+<section id="tab-single" class="tab active">
+  <p class="desc" data-i18n="single_desc">1つのdPCMサンプル（.dmc）を生成します。dpcm_generator.py 相当の機能です。</p>
+  <div class="layout">
+    <div>
+      <div id="sg-wavesrc"></div>
+      <fieldset>
+        <legend data-i18n="legend_pitch">音程</legend>
+        <div class="row">
+          <div>
+            <label data-i18n="label_note">音名</label>
+            <select id="sg-note"></select>
+          </div>
+          <div>
+            <label data-i18n="label_freq">周波数 (Hz) ※音名より優先</label>
+            <input type="number" id="sg-freq" step="0.01" min="1" data-i18n-ph="ph_unspecified" placeholder="(未指定)">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label data-i18n="label_rate_fit">サンプルレート指定（fit無効時）</label>
+            <select id="sg-rate"><option value="" data-i18n="opt_auto">自動選択</option></select>
+          </div>
+        </div>
+      </fieldset>
+      <div id="sg-common"></div>
+      <fieldset>
+        <legend data-i18n="legend_output">出力 / ppmck定義</legend>
+        <div class="row">
+          <div>
+            <label data-i18n="label_outname">出力ファイル名</label>
+            <input type="text" id="sg-outname" data-i18n-ph="ph_auto_dmc" placeholder="(自動: 波形_音名.dmc)">
+          </div>
+          <div>
+            <label data-i18n="label_dpcmindex">@DPCM番号</label>
+            <input type="number" id="sg-dpcmindex" value="0" min="0">
+          </div>
+        </div>
+        <label data-i18n="label_dpcmpath">定義内のdmcパス（例: D:\myFolder\）</label>
+        <input type="text" id="sg-dpcmpath" placeholder="">
+      </fieldset>
+      <button class="btn" id="sg-run" data-i18n="btn_generate">生成する</button>
+    </div>
+    <div>
+      <div class="error-box" id="sg-error"></div>
+      <div class="result-panel" id="sg-result"><div class="placeholder" data-i18n="ph_result_single">「生成する」を押すと結果がここに表示されます</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= バッチ生成 ======================= -->
+<section id="tab-batch" class="tab">
+  <p class="desc" data-i18n="batch_desc">指定した音域の全音階（デフォルト: C2〜F4）を一括生成し、ppmck定義とZIPを出力します。dpcm_batch.py 相当の機能です。</p>
+  <div class="layout">
+    <div>
+      <fieldset>
+        <legend data-i18n="legend_target_scale">対象音階</legend>
+        <div class="row">
+          <div>
+            <label data-i18n="label_startnote">開始ノート</label>
+            <select id="bt-start"></select>
+          </div>
+          <div>
+            <label data-i18n="label_endnote">終了ノート</label>
+            <select id="bt-end"></select>
+          </div>
+        </div>
+      </fieldset>
+      <div id="bt-wavesrc"></div>
+      <div id="bt-common"></div>
+      <fieldset>
+        <legend data-i18n="legend_output">出力 / ppmck定義</legend>
+        <div class="row">
+          <div>
+            <label data-i18n="label_dpcmstart">@DPCM開始番号</label>
+            <input type="number" id="bt-startindex" value="0" min="0">
+          </div>
+          <div>
+            <label data-i18n="label_dpcmpath2">定義内のdmcパス</label>
+            <input type="text" id="bt-dpcmpath" placeholder="">
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="bt-incprev"> <span data-i18n="chk_incprev">プレビューWAVをZIP/保存先に含める</span></label>
+        </div>
+        <label data-i18n="label_outdir">サーバー側の保存先ディレクトリ（任意）</label>
+        <input type="text" id="bt-outdir" data-i18n-ph="ph_zip_only" placeholder="(空欄ならZIPダウンロードのみ)">
+        <div class="hint" data-i18n="hint_relpath">相対パスはdpcm_gui.pyを起動したディレクトリ基準です</div>
+      </fieldset>
+      <button class="btn" id="bt-run" data-i18n="btn_batch">一括生成する</button>
+    </div>
+    <div>
+      <div class="error-box" id="bt-error"></div>
+      <div class="result-panel" id="bt-result"><div class="placeholder" data-i18n="ph_result_batch">「一括生成する」を押すと結果がここに表示されます</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= サンソフト方式 ======================= -->
+<section id="tab-sunsoft" class="tab">
+  <p class="desc" data-i18n="sunsoft_desc">最小限の基本サンプルを異なる再生レートで使い回し、少ないメモリで全音階をカバーします。dpcm_sunsoft.py 相当の機能です。</p>
+  <div class="layout">
+    <div>
+      <fieldset>
+        <legend data-i18n="legend_range_err">対象音域 / 誤差</legend>
+        <div class="row">
+          <div>
+            <label data-i18n="label_startnote">開始ノート</label>
+            <select id="ss-start"></select>
+          </div>
+          <div>
+            <label data-i18n="label_endnote">終了ノート</label>
+            <select id="ss-end"></select>
+          </div>
+          <div>
+            <label data-i18n="label_maxerror">許容誤差 (cents)</label>
+            <input type="number" id="ss-maxerror" value="25" step="1" min="1">
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="ss-preferquality"> <span data-i18n="chk_preferquality">音質優先（許容誤差内で高レートを優先）</span></label>
+          <label><input type="checkbox" id="ss-sizepriority"> <span data-i18n="chk_sizepriority">サイズ優先（対象範囲外のサンプルも使いサンプル数を最小化）</span></label>
+        </div>
+        <div class="toolbar">
+          <button class="btn secondary" id="ss-analyze" data-i18n="btn_analyze">分析のみ実行</button>
+        </div>
+      </fieldset>
+      <div id="ss-wavesrc"></div>
+      <div id="ss-common"></div>
+      <fieldset>
+        <legend data-i18n="legend_output">出力 / ppmck定義</legend>
+        <div class="row">
+          <div>
+            <label data-i18n="label_prefix">ファイル名プレフィックス</label>
+            <input type="text" id="ss-prefix" value="sunsoft_">
+          </div>
+          <div>
+            <label data-i18n="label_dpcmstart_scale">@DPCM開始番号（音階部分）</label>
+            <input type="number" id="ss-startindex" value="0" min="0">
+          </div>
+        </div>
+        <label data-i18n="label_dpcmpath2">定義内のdmcパス</label>
+        <input type="text" id="ss-dpcmpath" placeholder="">
+        <div class="checks">
+          <label><input type="checkbox" id="ss-scaleprev" checked> <span data-i18n="chk_scaleprev">スケールプレビュー（全音階を順番に再生するWAV）を生成</span></label>
+        </div>
+        <div class="row">
+          <div>
+            <label data-i18n="label_scaledur">スケール各音の長さ (秒)</label>
+            <input type="number" id="ss-scaledur" value="0.5" step="0.1" min="0.1">
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="ss-incprev"> <span data-i18n="chk_incprev">プレビューWAVをZIP/保存先に含める</span></label>
+        </div>
+        <label data-i18n="label_outdir">サーバー側の保存先ディレクトリ（任意）</label>
+        <input type="text" id="ss-outdir" data-i18n-ph="ph_zip_only" placeholder="(空欄ならZIPダウンロードのみ)">
+        <div class="hint" data-i18n="hint_relpath">相対パスはdpcm_gui.pyを起動したディレクトリ基準です</div>
+      </fieldset>
+      <button class="btn" id="ss-run" data-i18n="btn_sunsoft">サンプルセットを生成する</button>
+    </div>
+    <div>
+      <div class="error-box" id="ss-error"></div>
+      <div class="result-panel" id="ss-result"><div class="placeholder" data-i18n="ph_result_sunsoft">「分析のみ実行」または「サンプルセットを生成する」を押してください</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= レート表 ======================= -->
+<section id="tab-rates" class="tab">
+  <p class="desc" data-i18n="rates_desc">NTSC dPCMの16種類のサンプルレートです。ppmck定義の3番目の値（レートインデックス）に対応します。</p>
+  <div class="result-panel" id="rates-result"><div class="placeholder" data-i18n="ph_loading">読み込み中...</div></div>
+</section>
+
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ================= 多言語（i18n） ================= */
+const I18N = {
+  ja: {
+    tab_single: '単一生成', tab_batch: 'バッチ生成', tab_sunsoft: 'サンソフト方式', tab_rates: 'レート表',
+    single_desc: '1つのdPCMサンプル（.dmc）を生成します。dpcm_generator.py 相当の機能です。',
+    batch_desc: '指定した音域の全音階（デフォルト: C2〜F4）を一括生成し、ppmck定義とZIPを出力します。dpcm_batch.py 相当の機能です。',
+    sunsoft_desc: '最小限の基本サンプルを異なる再生レートで使い回し、少ないメモリで全音階をカバーします。dpcm_sunsoft.py 相当の機能です。',
+    rates_desc: 'NTSC dPCMの16種類のサンプルレートです。ppmck定義の3番目の値（レートインデックス）に対応します。',
+    legend_pitch: '音程', label_note: '音名', label_freq: '周波数 (Hz) ※音名より優先',
+    ph_unspecified: '(未指定)', label_rate_fit: 'サンプルレート指定（fit無効時）', opt_auto: '自動選択',
+    legend_output: '出力 / ppmck定義', label_outname: '出力ファイル名', ph_auto_dmc: '(自動: 波形_音名.dmc)',
+    label_dpcmindex: '@DPCM番号', label_dpcmpath: '定義内のdmcパス（例: D:\\myFolder\\）',
+    btn_generate: '生成する', ph_result_single: '「生成する」を押すと結果がここに表示されます',
+    legend_target_scale: '対象音階', label_startnote: '開始ノート', label_endnote: '終了ノート',
+    label_dpcmstart: '@DPCM開始番号', label_dpcmpath2: '定義内のdmcパス',
+    chk_incprev: 'プレビューWAVをZIP/保存先に含める',
+    label_outdir: 'サーバー側の保存先ディレクトリ（任意）', ph_zip_only: '(空欄ならZIPダウンロードのみ)',
+    hint_relpath: '相対パスはdpcm_gui.pyを起動したディレクトリ基準です',
+    btn_batch: '一括生成する', ph_result_batch: '「一括生成する」を押すと結果がここに表示されます',
+    legend_range_err: '対象音域 / 誤差', label_maxerror: '許容誤差 (cents)',
+    chk_preferquality: '音質優先（許容誤差内で高レートを優先）',
+    chk_sizepriority: 'サイズ優先（対象範囲外のサンプルも使いサンプル数を最小化）',
+    btn_analyze: '分析のみ実行', label_prefix: 'ファイル名プレフィックス',
+    label_dpcmstart_scale: '@DPCM開始番号（音階部分）',
+    chk_scaleprev: 'スケールプレビュー（全音階を順番に再生するWAV）を生成',
+    label_scaledur: 'スケール各音の長さ (秒)', btn_sunsoft: 'サンプルセットを生成する',
+    ph_result_sunsoft: '「分析のみ実行」または「サンプルセットを生成する」を押してください',
+    ph_loading: '読み込み中...',
+    legend_wavesrc: '波形ソース', src_wave: 'プリセット波形', src_hex: 'HEX', src_fds: 'FDS', src_wav: 'WAVファイル',
+    label_wavetype: '波形の種類',
+    label_hex: '16進数波形データ（符号付き8bit、2文字=1サンプル）', ph_hex: '例: 0004081020...',
+    label_fds: 'FDS波形データ（スペース区切り 0〜63）', ph_fds: '例: 0 0 32 63 63 32 0 0 ...',
+    label_wavfile: 'WAVファイル（1周期分の波形）', label_lowpass: 'ローパス カットオフ (Hz)', ph_auto: '(自動)',
+    label_lporder: 'フィルタ次数', chk_noautolp: '自動ローパスフィルタを無効化',
+    label_wavename: '波形名（ファイル名に使用、カスタム波形時）',
+    wave_saw: 'ノコギリ波 (saw)', wave_triangle: '三角波 (triangle)', wave_sine: 'サイン波 (sine)',
+    wave_square: '矩形波 (square)', wave_pulse25: 'パルス波 25% (pulse25)', wave_pulse12: 'パルス波 12.5% (pulse12)',
+    legend_genopts: '生成オプション',
+    chk_fit: 'fitモード（dPCM有効長 8+128n にぴったり合わせる）',
+    chk_quality: '高品質優先（fit時、サイズより高レートを優先）',
+    label_minrate: 'レート下限（fit時）', opt_none: '指定なし', label_cycles: '周期数', label_volume: '音量 (1.0=等倍)',
+    chk_autostart: '開始値を波形に合わせる (auto-start)',
+    chk_loopmatch: 'ループ終端を開始値に合わせる (loop-match)',
+    chk_warmup: 'ウォームアップ（開始値を定常状態に収束させる）',
+    label_suboct: 'サブオクターブ混合量 (0〜1)', label_prevloops: 'プレビューのループ回数',
+    chk_rawprev: 'エンコード前プレビューWAV（_raw.wav）も生成する',
+    msg_generating: '生成中...', msg_parse_fail: '応答の解析に失敗しました', err_prefix: 'エラー: ',
+    msg_copied: 'コピーしました', msg_copy_fail: 'クリップボードへのコピーに失敗しました',
+    msg_wav_loaded: '読み込み済み: {name} ({kb} KB)',
+    r_wavetype: '波形タイプ', r_target_pitch: '目標音程', r_samplerate: 'サンプルレート',
+    r_samples_per_cycle: '1周期サンプル', r_num_cycles: '周期数', r_total_samples: '合計サンプル', r_padding: 'パディング',
+    r_actual_freq: '実際の周波数', r_error: '誤差', r_cents_unit: 'セント', r_filesize: 'ファイルサイズ', r_bytes: 'バイト',
+    r_startvalue: '開始値', r_auto_set: '（自動設定）', r_fitmode: 'fitモード', r_fit_enabled: '有効 ({q})',
+    r_lowpass: 'ローパスフィルタ', r_suboctave: 'サブオクターブ', r_options: 'オプション',
+    sec_waveform: '波形', wave_blue: '青: dPCMデコード後', wave_yellow: '黄: エンコード前',
+    sec_preview: 'プレビュー再生', label_dpcm_preview: 'dPCMプレビュー（実際の音）', label_raw_preview: 'エンコード前（理想波形）',
+    btn_dl_wav: 'プレビューWAV', sec_ppmck_example: 'ppmck定義例', btn_copy_def: '定義をコピー',
+    ok_batch: '✔ {start}〜{end} の {n}ファイル生成（合計 {bytes} バイト / {kb} KB）',
+    ok_saved: '💾 サーバー側に保存: {dir}（{files}ファイル）',
+    warn_failures: '⚠ 失敗 {n}件: {list}',
+    btn_dl_zip: '⬇ ZIP一括ダウンロード',
+    th_note: 'ノート', th_file: 'ファイル', th_rate: 'レート', th_percycle: '1周期', th_size: 'サイズ',
+    th_error_c: '誤差(c)', th_play: '再生', th_dl: 'DL',
+    sec_ppmck_def: 'ppmck定義 ({name})',
+    map_uncoverable: 'カバー不可', th_basesample: '基本サンプル', sec_note_mapping: 'ノートマッピング',
+    stats_line: '最大誤差 {max}c / 平均誤差 {avg}c / カバー率 {cov}/{tot} ({pct}%)',
+    analyze_result: '📊 分析結果: {start}〜{end} を基本サンプル {n}個 でカバー可能',
+    r_base_notes: '基本サンプルノート', r_maxerror: '許容誤差',
+    ok_sunsoft: '✔ 基本サンプル {n}個 生成（合計 {bytes} バイト / {kb} KB）— {start}〜{end} をカバー',
+    warn_scale_fail: '⚠ スケールプレビュー生成失敗: {msg}',
+    sec_scale_preview: 'スケールプレビュー（全音階を順番に再生）', sec_base_samples: '基本サンプル',
+    th_sample_cycle: 'サンプル×周期',
+    th_index: 'インデックス', th_samplerate: 'サンプルレート', th_fratio: '$F比（セント差）',
+    hint_batch_default: 'バッチ生成のデフォルト対象音階: {notes}',
+    err_rates_fail: 'レート情報の取得に失敗しました: {msg}',
+    lang_other: 'English',
+  },
+  en: {
+    tab_single: 'Single', tab_batch: 'Batch', tab_sunsoft: 'Sunsoft', tab_rates: 'Rate Table',
+    single_desc: 'Generate a single dPCM sample (.dmc). Equivalent to dpcm_generator.py.',
+    batch_desc: 'Generate every note in a range at once (default: C2–F4) with ppmck definitions and a ZIP. Equivalent to dpcm_batch.py.',
+    sunsoft_desc: 'Reuse a minimal set of base samples at different playback rates to cover all notes with little memory. Equivalent to dpcm_sunsoft.py.',
+    rates_desc: 'The 16 NTSC dPCM sample rates. These map to the 3rd value (rate index) in a ppmck definition.',
+    legend_pitch: 'Pitch', label_note: 'Note', label_freq: 'Frequency (Hz) — overrides note',
+    ph_unspecified: '(unset)', label_rate_fit: 'Sample rate (when fit is off)', opt_auto: 'Auto',
+    legend_output: 'Output / ppmck', label_outname: 'Output filename', ph_auto_dmc: '(auto: wave_note.dmc)',
+    label_dpcmindex: '@DPCM number', label_dpcmpath: 'dmc path in definition (e.g. D:\\myFolder\\)',
+    btn_generate: 'Generate', ph_result_single: 'Press "Generate" to see results here',
+    legend_target_scale: 'Note range', label_startnote: 'Start note', label_endnote: 'End note',
+    label_dpcmstart: '@DPCM start number', label_dpcmpath2: 'dmc path in definition',
+    chk_incprev: 'Include preview WAV in ZIP/output',
+    label_outdir: 'Server-side output directory (optional)', ph_zip_only: '(empty = ZIP download only)',
+    hint_relpath: 'Relative paths are based on where dpcm_gui.py was started',
+    btn_batch: 'Generate all', ph_result_batch: 'Press "Generate all" to see results here',
+    legend_range_err: 'Range / error', label_maxerror: 'Max error (cents)',
+    chk_preferquality: 'Prefer quality (higher rate within tolerance)',
+    chk_sizepriority: 'Prefer size (use out-of-range samples to minimize count)',
+    btn_analyze: 'Analyze only', label_prefix: 'Filename prefix',
+    label_dpcmstart_scale: '@DPCM start number (notes)',
+    chk_scaleprev: 'Generate scale preview (WAV playing all notes in order)',
+    label_scaledur: 'Duration per note (sec)', btn_sunsoft: 'Generate sample set',
+    ph_result_sunsoft: 'Press "Analyze only" or "Generate sample set"',
+    ph_loading: 'Loading...',
+    legend_wavesrc: 'Waveform source', src_wave: 'Preset waveform', src_hex: 'HEX', src_fds: 'FDS', src_wav: 'WAV file',
+    label_wavetype: 'Waveform type',
+    label_hex: 'Hex waveform data (signed 8-bit, 2 chars = 1 sample)', ph_hex: 'e.g. 0004081020...',
+    label_fds: 'FDS waveform data (space-separated 0–63)', ph_fds: 'e.g. 0 0 32 63 63 32 0 0 ...',
+    label_wavfile: 'WAV file (single-cycle waveform)', label_lowpass: 'Low-pass cutoff (Hz)', ph_auto: '(auto)',
+    label_lporder: 'Filter order', chk_noautolp: 'Disable auto low-pass filter',
+    label_wavename: 'Waveform name (used in filename for custom waves)',
+    wave_saw: 'Sawtooth (saw)', wave_triangle: 'Triangle (triangle)', wave_sine: 'Sine (sine)',
+    wave_square: 'Square (square)', wave_pulse25: 'Pulse 25% (pulse25)', wave_pulse12: 'Pulse 12.5% (pulse12)',
+    legend_genopts: 'Generation options',
+    chk_fit: 'Fit mode (match valid dPCM length 8+128n exactly)',
+    chk_quality: 'Prefer quality (with fit: higher rate over smaller size)',
+    label_minrate: 'Min rate (with fit)', opt_none: 'None', label_cycles: 'Cycles', label_volume: 'Volume (1.0 = unchanged)',
+    chk_autostart: 'Match start value to waveform (auto-start)',
+    chk_loopmatch: 'Match loop end to start value (loop-match)',
+    chk_warmup: 'Warm-up (converge start value to steady state)',
+    label_suboct: 'Sub-octave mix (0–1)', label_prevloops: 'Preview loop count',
+    chk_rawprev: 'Also generate pre-encode preview WAV (_raw.wav)',
+    msg_generating: 'Generating...', msg_parse_fail: 'Failed to parse response', err_prefix: 'Error: ',
+    msg_copied: 'Copied', msg_copy_fail: 'Failed to copy to clipboard',
+    msg_wav_loaded: 'Loaded: {name} ({kb} KB)',
+    r_wavetype: 'Waveform type', r_target_pitch: 'Target pitch', r_samplerate: 'Sample rate',
+    r_samples_per_cycle: 'Samples/cycle', r_num_cycles: 'Cycles', r_total_samples: 'Total samples', r_padding: 'padding',
+    r_actual_freq: 'Actual frequency', r_error: 'Error', r_cents_unit: 'cents', r_filesize: 'File size', r_bytes: 'bytes',
+    r_startvalue: 'Start value', r_auto_set: ' (auto)', r_fitmode: 'Fit mode', r_fit_enabled: 'Enabled ({q})',
+    r_lowpass: 'Low-pass filter', r_suboctave: 'Sub-octave', r_options: 'Options',
+    sec_waveform: 'Waveform', wave_blue: 'blue: after dPCM decode', wave_yellow: 'yellow: before encode',
+    sec_preview: 'Preview playback', label_dpcm_preview: 'dPCM preview (actual sound)', label_raw_preview: 'Before encoding (ideal waveform)',
+    btn_dl_wav: 'Preview WAV', sec_ppmck_example: 'ppmck example', btn_copy_def: 'Copy definition',
+    ok_batch: '✔ Generated {n} files for {start}–{end} (total {bytes} bytes / {kb} KB)',
+    ok_saved: '💾 Saved on server: {dir} ({files} files)',
+    warn_failures: '⚠ {n} failures: {list}',
+    btn_dl_zip: '⬇ Download all (ZIP)',
+    th_note: 'Note', th_file: 'File', th_rate: 'Rate', th_percycle: 'Cycle', th_size: 'Size',
+    th_error_c: 'Error(c)', th_play: 'Play', th_dl: 'DL',
+    sec_ppmck_def: 'ppmck definition ({name})',
+    map_uncoverable: 'Not coverable', th_basesample: 'Base sample', sec_note_mapping: 'Note mapping',
+    stats_line: 'Max error {max}c / avg {avg}c / coverage {cov}/{tot} ({pct}%)',
+    analyze_result: '📊 Analysis: {start}–{end} coverable with {n} base samples',
+    r_base_notes: 'Base sample notes', r_maxerror: 'Max error',
+    ok_sunsoft: '✔ Generated {n} base samples (total {bytes} bytes / {kb} KB) — covers {start}–{end}',
+    warn_scale_fail: '⚠ Scale preview failed: {msg}',
+    sec_scale_preview: 'Scale preview (all notes in sequence)', sec_base_samples: 'Base samples',
+    th_sample_cycle: 'Samples×cycles',
+    th_index: 'Index', th_samplerate: 'Sample rate', th_fratio: '$F ratio (cents)',
+    hint_batch_default: 'Default batch note range: {notes}',
+    err_rates_fail: 'Failed to fetch rate info: {msg}',
+    lang_other: '日本語',
+  },
+};
+
+let LANG = 'ja';
+function t(key, vars) {
+  let s = (I18N[LANG] && I18N[LANG][key]);
+  if (s === undefined) s = I18N.ja[key];
+  if (s === undefined) s = key;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+function detectLang() {
+  try {
+    const saved = localStorage.getItem('dpcm_lang');
+    if (saved === 'ja' || saved === 'en') return saved;
+  } catch (e) {}
+  const nav = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+  return nav.startsWith('ja') ? 'ja' : 'en';
+}
+const redraws = {};
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  $('lang-btn').textContent = t('lang_other');
+  Object.keys(redraws).forEach(k => { try { redraws[k] && redraws[k](); } catch (e) {} });
+}
+function setLang(lang) {
+  LANG = lang;
+  try { localStorage.setItem('dpcm_lang', lang); } catch (e) {}
+  applyI18n();
+}
+
+/* サーバー由来の文字列は lang パラメータ付きで取得するため、
+   バックエンドが既に対象言語で返す（フロントでの再変換は不要）。 */
+
+/* ---------------- タブ切り替え ---------------- */
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    $('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+$('lang-btn').addEventListener('click', () => setLang(LANG === 'ja' ? 'en' : 'ja'));
+
+/* ---------------- 共通フォーム部品 ---------------- */
+const WAVE_VALUES = ['saw', 'triangle', 'sine', 'square', 'pulse25', 'pulse12'];
+
+function waveSourceHTML(prefix, withName) {
+  const radios = [
+    ['wave', 'src_wave'], ['hex', 'src_hex'], ['fds', 'src_fds'], ['wav', 'src_wav'],
+  ].map(([v, k], i) =>
+    `<label><input type="radio" name="${prefix}-src" value="${v}" ${i===0?'checked':''}> <span data-i18n="${k}"></span></label>`
+  ).join('');
+  const waveOpts = WAVE_VALUES.map(v => `<option value="${v}" data-i18n="wave_${v}"></option>`).join('');
+  const nameField = withName ? `
+    <div class="src-any">
+      <label data-i18n="label_wavename"></label>
+      <input type="text" id="${prefix}-name" data-i18n-ph="ph_auto" placeholder="(自動)">
+    </div>` : '';
+  return `
+  <fieldset>
+    <legend data-i18n="legend_wavesrc"></legend>
+    <div class="checks row">${radios}</div>
+    <div class="src-block" data-src="wave">
+      <label data-i18n="label_wavetype"></label>
+      <select id="${prefix}-wave">${waveOpts}</select>
+    </div>
+    <div class="src-block" data-src="hex" style="display:none">
+      <label data-i18n="label_hex"></label>
+      <textarea id="${prefix}-hex" data-i18n-ph="ph_hex"></textarea>
+    </div>
+    <div class="src-block" data-src="fds" style="display:none">
+      <label data-i18n="label_fds"></label>
+      <textarea id="${prefix}-fds" data-i18n-ph="ph_fds"></textarea>
+    </div>
+    <div class="src-block" data-src="wav" style="display:none">
+      <label data-i18n="label_wavfile"></label>
+      <input type="file" id="${prefix}-wavfile" accept=".wav,audio/wav">
+      <div class="hint" id="${prefix}-wavinfo"></div>
+      <div class="row">
+        <div>
+          <label data-i18n="label_lowpass"></label>
+          <input type="number" id="${prefix}-lowpass" data-i18n-ph="ph_auto" placeholder="(自動)" min="1">
+        </div>
+        <div>
+          <label data-i18n="label_lporder"></label>
+          <input type="number" id="${prefix}-lporder" value="63" min="1">
+        </div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="${prefix}-noautolp"> <span data-i18n="chk_noautolp"></span></label>
+      </div>
+    </div>
+    ${nameField}
+  </fieldset>`;
+}
+
+function commonOptsHTML(prefix, defs) {
+  defs = defs || {};
+  const cycles = defs.cycles ?? 1;
+  return `
+  <fieldset>
+    <legend data-i18n="legend_genopts"></legend>
+    <div class="checks">
+      <label><input type="checkbox" id="${prefix}-fit" ${defs.fit !== false ? 'checked' : ''}> <span data-i18n="chk_fit"></span></label>
+      <label><input type="checkbox" id="${prefix}-quality"> <span data-i18n="chk_quality"></span></label>
+    </div>
+    <div class="row">
+      <div>
+        <label data-i18n="label_minrate"></label>
+        <select id="${prefix}-minrate"><option value="" data-i18n="opt_none"></option></select>
+      </div>
+      <div>
+        <label data-i18n="label_cycles"></label>
+        <input type="number" id="${prefix}-cycles" value="${cycles}" min="1">
+      </div>
+      <div>
+        <label data-i18n="label_volume"></label>
+        <input type="number" id="${prefix}-volume" value="1.0" step="0.05" min="0">
+      </div>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="${prefix}-autostart" checked> <span data-i18n="chk_autostart"></span></label>
+      <label><input type="checkbox" id="${prefix}-loopmatch"> <span data-i18n="chk_loopmatch"></span></label>
+      <label><input type="checkbox" id="${prefix}-warmup" checked> <span data-i18n="chk_warmup"></span></label>
+    </div>
+    <div class="row">
+      <div>
+        <label data-i18n="label_suboct"></label>
+        <input type="number" id="${prefix}-suboct" value="0" step="0.05" min="0" max="1">
+      </div>
+      <div>
+        <label data-i18n="label_prevloops"></label>
+        <input type="number" id="${prefix}-prevloops" value="4" min="1">
+      </div>
+    </div>
+    ${prefix !== 'sg' ? `<div class="checks">
+      <label><input type="checkbox" id="${prefix}-rawprev"> <span data-i18n="chk_rawprev"></span></label>
+    </div>` : ''}
+  </fieldset>`;
+}
+
+function setupWaveSource(prefix) {
+  const fs = $(prefix + '-wavesrc');
+  fs.querySelectorAll(`input[name=${prefix}-src]`).forEach(radio => {
+    radio.addEventListener('change', () => {
+      fs.querySelectorAll('.src-block').forEach(div => {
+        div.style.display = (div.dataset.src === radio.value) ? '' : 'none';
+      });
+    });
+  });
+  const fileInput = $(prefix + '-wavfile');
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    const info = $(prefix + '-wavinfo');
+    if (!f) { delete fileInput.dataset.b64; info.textContent = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      fileInput.dataset.b64 = reader.result.split(',')[1];
+      fileInput.dataset.name = f.name;
+      info.textContent = t('msg_wav_loaded', { name: f.name, kb: (f.size/1024).toFixed(1) });
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+let RATES = [];
+function fillRateSelect(sel, withAuto) {
+  RATES.forEach((r, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `$${i.toString(16).toUpperCase()} (${r.toFixed(1)} Hz)`;
+    sel.appendChild(opt);
+  });
+}
+function fillNoteSelect(sel, defNote, lowOct, highOct) {
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  for (let oct = lowOct; oct <= highOct; oct++) {
+    for (const n of names) {
+      const note = n + oct;
+      const opt = document.createElement('option');
+      opt.value = note; opt.textContent = note;
+      if (note === defNote) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+/* ---------------- パラメータ収集 ---------------- */
+function srcParams(prefix) {
+  const src = document.querySelector(`input[name=${prefix}-src]:checked`).value;
+  const p = { source: src, wave: $(prefix + '-wave').value };
+  if (src === 'hex') p.hex = $(prefix + '-hex').value;
+  if (src === 'fds') p.fds = $(prefix + '-fds').value;
+  if (src === 'wav') {
+    const f = $(prefix + '-wavfile');
+    p.wav_data = f.dataset.b64 || '';
+    p.wav_name = f.dataset.name || '';
+    p.lowpass = numOrNull(prefix + '-lowpass');
+    p.lowpass_order = numOrNull(prefix + '-lporder');
+    p.no_auto_lowpass = $(prefix + '-noautolp').checked;
+  }
+  const nameEl = $(prefix + '-name');
+  if (nameEl) p.name = nameEl.value.trim();
+  return p;
+}
+function numOrNull(id) {
+  const v = $(id).value.trim();
+  return v === '' ? null : Number(v);
+}
+function commonParams(prefix) {
+  const p = {
+    fit: $(prefix + '-fit').checked,
+    quality: $(prefix + '-quality').checked,
+    min_rate_index: numOrNull(prefix + '-minrate'),
+    cycles: numOrNull(prefix + '-cycles'),
+    volume: numOrNull(prefix + '-volume'),
+    auto_start: $(prefix + '-autostart').checked,
+    loop_match: $(prefix + '-loopmatch').checked,
+    warmup: $(prefix + '-warmup').checked,
+    sub_octave: numOrNull(prefix + '-suboct'),
+    preview_loops: numOrNull(prefix + '-prevloops'),
+  };
+  const raw = $(prefix + '-rawprev');
+  if (raw) p.raw_preview = raw.checked;
+  return p;
+}
+
+/* ---------------- API / UI ヘルパー ---------------- */
+async function api(path, params) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ lang: LANG }, params || {})),
+  });
+  let data;
+  try { data = await res.json(); } catch { data = { error: t('msg_parse_fail') }; }
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+async function withBusy(btn, errBox, fn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = t('msg_generating');
+  errBox.style.display = 'none';
+  try {
+    await fn();
+  } catch (e) {
+    errBox.textContent = t('err_prefix') + e.message;
+    errBox.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+function downloadB64(name, b64data, mime) {
+  const bin = atob(b64data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function downloadText(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = t('msg_copied');
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch { alert(t('msg_copy_fail')); }
+}
+const sharedAudio = new Audio();
+let playingBtn = null;
+function togglePlay(b64wav, btn) {
+  if (playingBtn === btn && !sharedAudio.paused) {
+    sharedAudio.pause();
+    btn.textContent = '▶';
+    playingBtn = null;
+    return;
+  }
+  if (playingBtn) playingBtn.textContent = '▶';
+  sharedAudio.src = 'data:audio/wav;base64,' + b64wav;
+  sharedAudio.play();
+  btn.textContent = '■';
+  playingBtn = btn;
+  sharedAudio.onended = () => { btn.textContent = '▶'; playingBtn = null; };
+}
+function centsClass(c) {
+  const a = Math.abs(c);
+  return a <= 5 ? 'cents-ok' : (a <= 15 ? 'cents-warn' : 'cents-bad');
+}
+function centsSpan(c) {
+  return `<span class="${centsClass(c)}">${c >= 0 ? '+' : ''}${c.toFixed(1)}</span>`;
+}
+
+function drawWaveform(canvas, decoded, raw) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth * dpr, h = 200 * dpr;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  // グリッド（開始値64の中心線と上下端）
+  ctx.strokeStyle = '#2a2f3d'; ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75].forEach(f => {
+    ctx.beginPath(); ctx.moveTo(0, h * f); ctx.lineTo(w, h * f); ctx.stroke();
+  });
+  const pad = 6 * dpr;
+  const y127 = v => pad + (1 - v / 127) * (h - 2 * pad);
+  // エンコード前波形（0.0〜1.0）を薄く重ねる
+  if (raw && raw.length) {
+    ctx.strokeStyle = 'rgba(230,193,74,0.55)'; ctx.lineWidth = 1.2 * dpr;
+    ctx.beginPath();
+    raw.forEach((v, i) => {
+      const x = i / (raw.length - 1 || 1) * w;
+      const y = y127(v * 127);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+  // dPCMデコード波形
+  ctx.strokeStyle = '#4ac3e6'; ctx.lineWidth = 1.4 * dpr;
+  ctx.beginPath();
+  decoded.forEach((v, i) => {
+    const x = i / (decoded.length - 1 || 1) * w;
+    const y = y127(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+/* ---------------- 単一生成タブ ---------------- */
+$('sg-wavesrc').innerHTML = waveSourceHTML('sg', false);
+$('sg-common').innerHTML = commonOptsHTML('sg', { cycles: 1 });
+setupWaveSource('sg');
+fillNoteSelect($('sg-note'), 'C3', 0, 7);
+
+$('sg-fit').addEventListener('change', () => {
+  $('sg-rate').disabled = $('sg-fit').checked;
+});
+
+function defaultDmcName() {
+  const src = document.querySelector('input[name=sg-src]:checked').value;
+  const wave = src === 'wave' ? $('sg-wave').value : src;
+  const freq = $('sg-freq').value.trim();
+  const noteStr = freq ? freq.replace('.', '_') + 'Hz' : $('sg-note').value.replace('#', '_s');
+  return `${wave}_${noteStr}.dmc`;
+}
+
+let sgLast = null;
+$('sg-run').addEventListener('click', () => withBusy($('sg-run'), $('sg-error'), async () => {
+  const outname = $('sg-outname').value.trim() || defaultDmcName();
+  const params = Object.assign(srcParams('sg'), commonParams('sg'), {
+    note: $('sg-note').value,
+    freq: numOrNull('sg-freq'),
+    rate_index: $('sg-fit').checked ? null : numOrNull('sg-rate'),
+    dpcm_index: numOrNull('sg-dpcmindex'),
+    dpcm_path: $('sg-dpcmpath').value,
+    output_name: outname,
+  });
+  const r = await api('/api/generate', params);
+  sgLast = { data: r, outname };
+  renderSingle(r, outname);
+}));
+
+function renderSingle(r, outname) {
+  const info = r.info;
+  const rows = [
+    [t('r_wavetype'), esc(info.wave_type_display)],
+    [t('r_target_pitch'), `${esc(info.note_name)} (${info.target_freq.toFixed(2)} Hz)`],
+    [t('r_samplerate'), `$${info.rate_index.toString(16).toUpperCase()} (${info.sample_rate.toFixed(2)} Hz)`],
+    [t('r_samples_per_cycle'), info.samples_per_cycle],
+    [t('r_num_cycles'), info.num_cycles],
+    [t('r_total_samples'), info.total_samples + (info.total_samples !== info.final_samples ? ` → ${info.final_samples} (${t('r_padding')})` : '')],
+    [t('r_actual_freq'), `${info.actual_freq.toFixed(2)} Hz`],
+    [t('r_error'), centsSpan(info.cents_error) + ' ' + t('r_cents_unit')],
+    [t('r_filesize'), `${info.file_size} ${t('r_bytes')}`],
+    [t('r_startvalue'), info.start_value + (info.auto_start ? t('r_auto_set') : '')],
+  ];
+  if (info.fit_mode) rows.push([t('r_fitmode'), t('r_fit_enabled', { q: esc(info.quality_str) })]);
+  if (info.lowpass) rows.push([t('r_lowpass'), esc(info.lowpass)]);
+  if (info.sub_octave > 0) rows.push([t('r_suboctave'), info.sub_octave.toFixed(2)]);
+  const flags = [info.loop_match && 'loop-match', info.warmup && 'warmup'].filter(Boolean).join(', ');
+  if (flags) rows.push([t('r_options'), flags]);
+
+  const ppmck = r.ppmck;
+  $('sg-result').innerHTML = `
+    ${r.warnings.map(wr => `<div class="warn-box">⚠ ${esc(wr)}</div>`).join('')}
+    <table class="info">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>
+    <h3 class="sec">${t('sec_waveform')} (<span style="color:#4ac3e6">${t('wave_blue')}</span> / <span style="color:#e6c14a">${t('wave_yellow')}</span>)</h3>
+    <canvas class="wave" id="sg-canvas"></canvas>
+    <h3 class="sec">${t('sec_preview')}</h3>
+    <label>${t('label_dpcm_preview')}</label>
+    <audio controls src="data:audio/wav;base64,${r.preview_wav_base64}"></audio>
+    <label>${t('label_raw_preview')}</label>
+    <audio controls src="data:audio/wav;base64,${r.raw_wav_base64}"></audio>
+    <div class="toolbar">
+      <button class="btn small" id="sg-dl-dmc">⬇ ${esc(outname)}</button>
+      <button class="btn small secondary" id="sg-dl-wav">⬇ ${t('btn_dl_wav')}</button>
+    </div>
+    <h3 class="sec">${t('sec_ppmck_example')}</h3>
+    <pre class="code" id="sg-ppmck">${esc(ppmck)}</pre>
+    <div class="toolbar"><button class="btn small secondary" id="sg-copy">${t('btn_copy_def')}</button></div>
+  `;
+  drawWaveform($('sg-canvas'), r.decoded, r.raw_waveform);
+  $('sg-dl-dmc').addEventListener('click', () => downloadB64(outname, r.dmc_base64));
+  $('sg-dl-wav').addEventListener('click', () =>
+    downloadB64(outname.replace(/\.dmc$/i, '') + '.wav', r.preview_wav_base64, 'audio/wav'));
+  $('sg-copy').addEventListener('click', e => copyText(ppmck, e.target));
+  redraws.single = () => renderSingle(r, outname);
+}
+
+/* ---------------- バッチ生成タブ ---------------- */
+$('bt-wavesrc').innerHTML = waveSourceHTML('bt', true);
+$('bt-common').innerHTML = commonOptsHTML('bt', { cycles: 1 });
+setupWaveSource('bt');
+fillNoteSelect($('bt-start'), 'C2', 0, 7);
+fillNoteSelect($('bt-end'), 'F4', 0, 7);
+
+$('bt-run').addEventListener('click', () => withBusy($('bt-run'), $('bt-error'), async () => {
+  const params = Object.assign(srcParams('bt'), commonParams('bt'), {
+    start: $('bt-start').value,
+    end: $('bt-end').value,
+    dpcm_start_index: numOrNull('bt-startindex'),
+    dpcm_path: $('bt-dpcmpath').value,
+    include_preview: $('bt-incprev').checked,
+    output_dir: $('bt-outdir').value,
+  });
+  const r = await api('/api/batch', params);
+  renderBatch(r);
+}));
+
+function renderBatch(r) {
+  const rows = r.results.map((it, i) => `
+    <tr>
+      <td>${esc(it.note)}</td>
+      <td class="mono">${esc(it.filename)}</td>
+      <td class="mono">$${it.rate_index.toString(16).toUpperCase()}</td>
+      <td>${it.samples}</td>
+      <td>${it.size} B</td>
+      <td>${centsSpan(it.cents_error)}</td>
+      <td>${it.preview_wav_base64 ? `<button class="play-btn" data-i="${i}">▶</button>` : ''}</td>
+      <td><button class="play-btn" data-dl="${i}">⬇</button></td>
+    </tr>`).join('');
+
+  $('bt-result').innerHTML = `
+    <div class="ok-box">${t('ok_batch', { start: esc(r.start), end: esc(r.end), n: r.results.length, bytes: r.total_size, kb: (r.total_size/1024).toFixed(1) })}</div>
+    ${r.copied ? `<div class="ok-box">${t('ok_saved', { dir: esc(r.copied.dir), files: r.copied.files })}</div>` : ''}
+    ${r.failures.length ? `<div class="warn-box">${t('warn_failures', { n: r.failures.length, list: r.failures.map(f => esc((f.note||'') + ' ' + f.reason)).join(' / ') })}</div>` : ''}
+    <div class="toolbar">
+      <button class="btn small" id="bt-dl-zip">${t('btn_dl_zip')}</button>
+      <button class="btn small secondary" id="bt-dl-def">⬇ ${esc(r.defines_name)}</button>
+      <button class="btn small secondary" id="bt-copy-def">${t('btn_copy_def')}</button>
+    </div>
+    <div class="scrollbox">
+      <table class="list">
+        <thead><tr><th>${t('th_note')}</th><th>${t('th_file')}</th><th>${t('th_rate')}</th><th>${t('th_percycle')}</th><th>${t('th_size')}</th><th>${t('th_error_c')}</th><th>${t('th_play')}</th><th>${t('th_dl')}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <h3 class="sec">${t('sec_ppmck_def', { name: esc(r.defines_name) })}</h3>
+    <pre class="code">${esc(r.defines)}</pre>
+  `;
+  $('bt-dl-zip').addEventListener('click', () =>
+    downloadB64(`dpcm_${r.wave_type}.zip`, r.zip_base64, 'application/zip'));
+  $('bt-dl-def').addEventListener('click', () => downloadText(r.defines_name, r.defines));
+  $('bt-copy-def').addEventListener('click', e => copyText(r.defines, e.target));
+  $('bt-result').querySelectorAll('button[data-i]').forEach(btn =>
+    btn.addEventListener('click', () => togglePlay(r.results[btn.dataset.i].preview_wav_base64, btn)));
+  $('bt-result').querySelectorAll('button[data-dl]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const it = r.results[btn.dataset.dl];
+      downloadB64(it.filename, it.dmc_base64);
+    }));
+  redraws.batch = () => renderBatch(r);
+}
+
+/* ---------------- サンソフト方式タブ ---------------- */
+$('ss-wavesrc').innerHTML = waveSourceHTML('ss', true);
+$('ss-common').innerHTML = commonOptsHTML('ss', { cycles: 8 });
+setupWaveSource('ss');
+fillNoteSelect($('ss-start'), 'C2', 0, 7);
+fillNoteSelect($('ss-end'), 'F4', 0, 7);
+
+function sunsoftPlanParams() {
+  return {
+    start: $('ss-start').value,
+    end: $('ss-end').value,
+    max_error: numOrNull('ss-maxerror'),
+    prefer_quality: $('ss-preferquality').checked,
+    size_priority: $('ss-sizepriority').checked,
+    cycles: numOrNull('ss-cycles'),
+  };
+}
+
+$('ss-analyze').addEventListener('click', () => withBusy($('ss-analyze'), $('ss-error'), async () => {
+  const r = await api('/api/sunsoft/analyze', sunsoftPlanParams());
+  renderSunsoftAnalyze(r);
+}));
+
+function mappingTable(mapping, withIndex) {
+  const rows = mapping.map(m => m.base === null
+    ? `<tr><td>${esc(m.note)}</td><td colspan="3" class="cents-bad">${t('map_uncoverable')}</td></tr>`
+    : `<tr>
+        <td>${esc(m.note)}</td>
+        <td>${esc(m.base)}${withIndex && m.sample_index != null ? ` (#${m.sample_index})` : ''}</td>
+        <td class="mono">$${m.rate_index.toString(16).toUpperCase()}</td>
+        <td>${centsSpan(m.error)}</td>
+      </tr>`).join('');
+  return `<div class="scrollbox"><table class="list">
+    <thead><tr><th>${t('th_note')}</th><th>${t('th_basesample')}</th><th>${t('th_rate')}</th><th>${t('th_error_c')}</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function statsBox(stats) {
+  if (!stats) return '';
+  return `<div class="ok-box">${t('stats_line', { max: stats.max_error.toFixed(1), avg: stats.avg_error.toFixed(1), cov: stats.covered, tot: stats.total, pct: (100*stats.covered/stats.total).toFixed(1) })}</div>`;
+}
+
+function renderSunsoftAnalyze(r) {
+  $('ss-result').innerHTML = `
+    <div class="ok-box">${t('analyze_result', { start: esc(r.start), end: esc(r.end), n: r.base_notes.length })}</div>
+    <table class="info">
+      <tr><th>${t('r_base_notes')}</th><td>${r.base_notes.map(esc).join(', ')}</td></tr>
+      <tr><th>${t('r_maxerror')}</th><td>${r.max_error} cents</td></tr>
+    </table>
+    ${statsBox(r.stats)}
+    <h3 class="sec">${t('sec_note_mapping')}</h3>
+    ${mappingTable(r.mapping, false)}
+  `;
+  redraws.sunsoft = () => renderSunsoftAnalyze(r);
+}
+
+$('ss-run').addEventListener('click', () => withBusy($('ss-run'), $('ss-error'), async () => {
+  const params = Object.assign(srcParams('ss'), commonParams('ss'), sunsoftPlanParams(), {
+    prefix: $('ss-prefix').value,
+    dpcm_start_index: numOrNull('ss-startindex'),
+    dpcm_path: $('ss-dpcmpath').value,
+    scale_preview: $('ss-scaleprev').checked,
+    scale_duration: numOrNull('ss-scaledur'),
+    include_preview: $('ss-incprev').checked,
+    output_dir: $('ss-outdir').value,
+    fit: $('ss-fit').checked,
+  });
+  const r = await api('/api/sunsoft/generate', params);
+  renderSunsoftGenerate(r);
+}));
+
+function renderSunsoftGenerate(r) {
+  const sampleRows = r.samples.map((s, i) => `
+    <tr>
+      <td>#${i}</td>
+      <td>${esc(s.note)}</td>
+      <td class="mono">${esc(s.filename)}</td>
+      <td class="mono">$${s.rate_index.toString(16).toUpperCase()}</td>
+      <td>${s.samples_per_cycle}×${s.cycles}</td>
+      <td>${s.size} B</td>
+      <td>${centsSpan(s.cents_error)}</td>
+      <td>${s.preview_wav_base64 ? `<button class="play-btn" data-i="${i}">▶</button>` : ''}</td>
+      <td><button class="play-btn" data-dl="${i}">⬇</button></td>
+    </tr>`).join('');
+
+  $('ss-result').innerHTML = `
+    <div class="ok-box">${t('ok_sunsoft', { n: r.samples.length, bytes: r.total_size, kb: (r.total_size/1024).toFixed(1), start: esc(r.start), end: esc(r.end) })}</div>
+    ${r.copied ? `<div class="ok-box">${t('ok_saved', { dir: esc(r.copied.dir), files: r.copied.files })}</div>` : ''}
+    ${r.failures.length ? `<div class="warn-box">${t('warn_failures', { n: r.failures.length, list: r.failures.map(f => esc((f.note||'') + ' ' + f.reason)).join(' / ') })}</div>` : ''}
+    ${r.scale_error ? `<div class="warn-box">${t('warn_scale_fail', { msg: esc(r.scale_error) })}</div>` : ''}
+    ${statsBox(r.stats)}
+    <div class="toolbar">
+      <button class="btn small" id="ss-dl-zip">${t('btn_dl_zip')}</button>
+      <button class="btn small secondary" id="ss-dl-def">⬇ ${esc(r.defines_name)}</button>
+      <button class="btn small secondary" id="ss-copy-def">${t('btn_copy_def')}</button>
+    </div>
+    ${r.scale_wav_base64 ? `
+      <h3 class="sec">${t('sec_scale_preview')}</h3>
+      <audio controls src="data:audio/wav;base64,${r.scale_wav_base64}"></audio>` : ''}
+    <h3 class="sec">${t('sec_base_samples')}</h3>
+    <div class="scrollbox">
+      <table class="list">
+        <thead><tr><th>#</th><th>${t('th_note')}</th><th>${t('th_file')}</th><th>${t('th_rate')}</th><th>${t('th_sample_cycle')}</th><th>${t('th_size')}</th><th>${t('th_error_c')}</th><th>${t('th_play')}</th><th>${t('th_dl')}</th></tr></thead>
+        <tbody>${sampleRows}</tbody>
+      </table>
+    </div>
+    <h3 class="sec">${t('sec_note_mapping')}</h3>
+    ${mappingTable(r.mapping, true)}
+    <h3 class="sec">${t('sec_ppmck_def', { name: esc(r.defines_name) })}</h3>
+    <pre class="code">${esc(r.defines)}</pre>
+  `;
+  $('ss-dl-zip').addEventListener('click', () =>
+    downloadB64(`sunsoft_${r.wave_type}.zip`, r.zip_base64, 'application/zip'));
+  $('ss-dl-def').addEventListener('click', () => downloadText(r.defines_name, r.defines));
+  $('ss-copy-def').addEventListener('click', e => copyText(r.defines, e.target));
+  $('ss-result').querySelectorAll('button[data-i]').forEach(btn =>
+    btn.addEventListener('click', () => togglePlay(r.samples[btn.dataset.i].preview_wav_base64, btn)));
+  $('ss-result').querySelectorAll('button[data-dl]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const s = r.samples[btn.dataset.dl];
+      downloadB64(s.filename, s.dmc_base64);
+    }));
+  redraws.sunsoft = () => renderSunsoftGenerate(r);
+}
+
+/* ---------------- レート表タブ / 初期化 ---------------- */
+function renderRates(data) {
+  const rows = data.rates.map((rate, i) => `
+    <tr>
+      <td class="mono">$${i.toString(16).toUpperCase()} (${i})</td>
+      <td>${rate.toFixed(2)} Hz</td>
+      <td>${data.cents_from_f[i].toFixed(1)} c</td>
+    </tr>`).join('');
+  $('rates-result').innerHTML = `
+    <table class="list">
+      <thead><tr><th>${t('th_index')}</th><th>${t('th_samplerate')}</th><th>${t('th_fratio')}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="hint" style="margin-top:10px">${t('hint_batch_default', { notes: data.batch_notes.map(esc).join(', ') })}</p>
+  `;
+}
+async function init() {
+  try {
+    const res = await fetch('/api/rates');
+    const data = await res.json();
+    RATES = data.rates;
+    fillRateSelect($('sg-rate'));
+    ['sg', 'bt', 'ss'].forEach(prefix => fillRateSelect($(prefix + '-minrate')));
+    renderRates(data);
+    redraws.rates = () => renderRates(data);
+  } catch (e) {
+    $('rates-result').innerHTML = `<div class="error-box" style="display:block">${t('err_rates_fail', { msg: esc(e.message) })}</div>`;
+  }
+}
+
+LANG = detectLang();
+applyI18n();
+init();
+</script>
+</body>
+</html>
