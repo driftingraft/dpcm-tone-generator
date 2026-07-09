@@ -206,6 +206,14 @@ In MML:
 E @DPCM0 | c   ; Play dPCM as tone
 ```
 
+## Author / Contact
+
+- **漂流いかだ / driftingraft** (Circle: 時遊戯画 / Jiyugiga)
+- GitHub: https://github.com/driftingraft
+- X (Twitter): [@KOR_jiyugiga](https://x.com/KOR_jiyugiga)
+
+Bug reports and feature requests are also welcome via GitHub Issues.
+
 ## License
 
 MIT License

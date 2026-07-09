@@ -320,6 +320,14 @@ MMLでの使用：
 E @DPCM0 | c   ; dPCMをトーンとして再生（ループ）
 ```
 
+## 作者・連絡先
+
+- **漂流いかだ**（サークル: 時遊戯画 / Jiyugiga）
+- GitHub: https://github.com/driftingraft
+- X (Twitter): [@KOR_jiyugiga](https://x.com/KOR_jiyugiga)
+
+不具合の報告・要望は GitHub の Issues もご利用ください。
+
 ## ライセンス
 
 MIT License

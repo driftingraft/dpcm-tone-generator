@@ -54,3 +54,11 @@ Entertainment System (NES / Famicom), right from your browser.
  The interface auto-detects your browser language
  (English / Japanese). You can switch anytime with the
  language button at the top-right corner.
+
+
+-----------------------------------------------------
+ Author / Contact
+-----------------------------------------------------
+ 漂流いかだ / driftingraft  (Circle: 時遊戯画 / Jiyugiga)
+   GitHub : https://github.com/driftingraft
+   X      : https://x.com/KOR_jiyugiga
