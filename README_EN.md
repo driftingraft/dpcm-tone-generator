@@ -46,6 +46,8 @@ python dpcm_gui.py --port 8000     # change port
 python dpcm_gui.py --no-browser    # do not open the browser automatically
 ```
 
+See the **[GUI manual](docs/gui_manual.md)** (in Japanese, with screenshots) for details.
+
 ### Basic Usage
 
 ```bash

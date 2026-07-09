@@ -17,6 +17,7 @@ NES dPCM Generator - ファミコン（NES）のdPCMサンプルを生成するP
 - `dpcm_sunsoft.py` - サンソフトベース方式（最小サンプル数で全音階カバー）
 - `dpcm_gui.py` - ブラウザGUI用ローカルWebサーバー（3スクリプト全機能をAPI経由で提供）
 - `dpcm_gui.html` - GUIのフロントエンド（単一HTML、`dpcm_gui.py`が配信）
+- `docs/gui_manual.md` - GUIの利用者向けマニュアル（GUIの機能・デフォルト値を変更したら追従が必要。画像は`docs/images/`）
 - `examples/` - サンプルファイル
 
 ### 技術スタック

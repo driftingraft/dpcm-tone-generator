@@ -645,7 +645,8 @@ class GuiHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path in ('/', '/index.html'):
+        path = self.path.split('?', 1)[0]
+        if path in ('/', '/index.html'):
             try:
                 with open(HTML_PATH, 'rb') as f:
                     body = f.read()
@@ -657,7 +658,7 @@ class GuiHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif self.path == '/api/rates':
+        elif path == '/api/rates':
             self._send_json(handle_rates())
         else:
             self._send_json({'error': 'not found'}, 404)
