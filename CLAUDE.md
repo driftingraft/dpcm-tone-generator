@@ -20,7 +20,7 @@ NES dPCM Generator - ファミコン（NES）のdPCMサンプルを生成するP
 - `docs/gui_manual.md` - GUIの利用者向けマニュアル（GUIの機能・デフォルト値を変更したら追従が必要。画像は`docs/images/`）
 - `packaging/` - 一般ユーザー向け配布パッケージのビルド一式（Python不要で起動できるWindows/Mac版を生成）
   - `packaging/build_package.py` - 組み立てスクリプト（埋め込みPython同梱のWin版 / python3利用のMac版）
-  - `packaging/launchers/` - `起動.bat`（Win）/`起動.command`（Mac）/`お読みください.txt`（利用者向け）
+  - `packaging/launchers/` - `Start.bat`（Win）/`Start.command`（Mac）/`README_FIRST.txt`（英）/`お読みください.txt`（日）
   - `packaging/README.md` - ビルド手順（メンテナ向け）
 - `examples/` - サンプルファイル
 

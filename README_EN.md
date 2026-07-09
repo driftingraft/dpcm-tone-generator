@@ -36,6 +36,8 @@ python dpcm_gui.py
 
 Starts a local web server (default: http://127.0.0.1:8765/ ) and opens your browser. No additional packages required.
 
+The interface auto-detects your browser language (English / Japanese) and has a language toggle at the top-right corner.
+
 - **Single**: equivalent to dpcm_generator.py — waveform graph, dPCM/pre-encode audio preview, ppmck definition example
 - **Batch**: equivalent to dpcm_batch.py — generate all notes in a configurable range (default: C2-F4), per-note playback, ZIP download
 - **Sunsoft**: equivalent to dpcm_sunsoft.py — analysis, minimal sample set generation, scale preview playback
@@ -47,6 +49,21 @@ python dpcm_gui.py --no-browser    # do not open the browser automatically
 ```
 
 See the **[GUI manual](docs/gui_manual.md)** (in Japanese, with screenshots) for details.
+
+### No-Python distribution (for end users)
+
+For users without Python, you can build a ready-to-run package that needs no installation:
+
+- **Windows**: bundles the official embeddable Python — just extract and double-click `Start.bat`.
+- **Mac**: uses the system `python3` — double-click `Start.command` (it offers to install the Command Line Developer Tools if `python3` is missing).
+
+Build both (output goes to `dist/`):
+
+```bash
+python packaging/build_package.py --zip
+```
+
+See **[packaging/README.md](packaging/README.md)** for details.
 
 ### Basic Usage
 

@@ -2,8 +2,8 @@
 
 一般ユーザー（Pythonを持っていない人）向けに、**インストール不要で起動できる配布パッケージ**を作成します。
 
-- **Windows版**: Windows公式の「埋め込みPython」を同梱。`起動.bat` をダブルクリックするだけで動く（Python導入不要）
-- **Mac版**: システムの `python3` を利用。`起動.command` をダブルクリックで動く（python3 未導入時はインストール案内を表示）
+- **Windows版**: Windows公式の「埋め込みPython」を同梱。`Start.bat` をダブルクリックするだけで動く（Python導入不要）
+- **Mac版**: システムの `python3` を利用。`Start.command` をダブルクリックで動く（python3 未導入時はインストール案内を表示）
 
 いずれも中身は既存の GUI（`dpcm_gui.py` / `dpcm_gui.html` ＋ 依存する `dpcm_*.py`）そのままで、起動スクリプトを添えただけの構成です。
 
@@ -13,9 +13,10 @@
 packaging/
 ├── build_package.py     … 組み立てスクリプト（標準ライブラリのみ）
 ├── launchers/
-│   ├── 起動.bat          … Windows用ランチャー
-│   ├── 起動.command      … Mac用ランチャー
-│   └── お読みください.txt … 利用者向け説明（両OS共通）
+│   ├── Start.bat         … Windows用ランチャー（ASCII名・英日併記）
+│   ├── Start.command     … Mac用ランチャー（ASCII名・英日併記）
+│   ├── README_FIRST.txt  … 利用者向け説明（英語）
+│   └── お読みください.txt … 利用者向け説明（日本語）
 └── README.md            … このファイル
 ```
 
@@ -24,15 +25,19 @@ packaging/
 ```
 dist/
 ├── NES-dPCM-Generator-Windows/   （+ .zip）
-│   ├── 起動.bat
+│   ├── Start.bat
+│   ├── README_FIRST.txt
 │   ├── お読みください.txt
 │   ├── app/                       … GUI本体一式
 │   └── python/                    … 埋め込みPython（同梱）
 └── NES-dPCM-Generator-Mac/       （+ .zip）
-    ├── 起動.command
+    ├── Start.command
+    ├── README_FIRST.txt
     ├── お読みください.txt
     └── app/                       … GUI本体一式
 ```
+
+> ランチャーのファイル名はASCII（`Start.bat`/`Start.command`）で、非日本語環境でも文字化けせず扱えます。コンソール表示は英日併記です。
 
 ## ビルド方法
 
@@ -67,8 +72,8 @@ python3 packaging/build_package.py --no-python
 
 配布zipを更新したら、最低限これらを確認します。
 
-1. **Windows実機**: zipを解凍 → `起動.bat` をダブルクリック → ブラウザが開き、`.dmc` が生成・ダウンロードできる
-2. **Mac実機**: zipを解凍 → `起動.command` を右クリック→開く → 同上
+1. **Windows実機**: zipを解凍 → `Start.bat` をダブルクリック → ブラウザが開き、`.dmc` が生成・ダウンロードできる
+2. **Mac実機**: zipを解凍 → `Start.command` を右クリック→開く → 同上
 3. GUIの機能・デフォルト値を変えた場合は `docs/gui_manual.md` も追従（CLAUDE.md 参照）
 
-> 注: Windows版は SmartScreen、Mac版は Gatekeeper により初回起動時に警告が出ます（未署名のため）。利用者向けの回避手順は `お読みください.txt` に記載済みです。コード署名を行う場合は別途証明書が必要です。
+> 注: Windows版は SmartScreen、Mac版は Gatekeeper により初回起動時に警告が出ます（未署名のため）。利用者向けの回避手順は `README_FIRST.txt` / `お読みください.txt` に記載済みです。コード署名を行う場合は別途証明書が必要です。

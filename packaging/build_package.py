@@ -6,8 +6,8 @@ NES dPCM Generator - 配布パッケージ組み立てスクリプト
 標準ライブラリのみで動作し、Windows/Mac/Linux のどこからでも実行できます。
 
 作成されるもの（dist/ 以下）:
-  - NES-dPCM-Generator-Windows/   … 埋め込みPython同梱。起動.bat をダブルクリックで動く
-  - NES-dPCM-Generator-Mac/       … システムのpython3を使用。起動.command で動く
+  - NES-dPCM-Generator-Windows/   … 埋め込みPython同梱。Start.bat をダブルクリックで動く
+  - NES-dPCM-Generator-Mac/       … システムのpython3を使用。Start.command で動く
   （--zip を付けると、それぞれ .zip も作成）
 
 使い方:
@@ -156,7 +156,8 @@ def build_windows(out_dir: Path, version: str, arch: str, include_python: bool, 
         shutil.rmtree(dist)
     dist.mkdir(parents=True)
     copy_app_files(dist)
-    copy_launcher('起動.bat', dist, crlf=True)
+    copy_launcher('Start.bat', dist, crlf=True)
+    copy_launcher('README_FIRST.txt', dist, crlf=True)
     copy_launcher('お読みください.txt', dist, crlf=True)
     if include_python:
         download_embedded_python(dist / 'python', version, arch)
@@ -174,7 +175,8 @@ def build_mac(out_dir: Path, make_zip: bool) -> None:
         shutil.rmtree(dist)
     dist.mkdir(parents=True)
     copy_app_files(dist)
-    copy_launcher('起動.command', dist, executable=True)
+    copy_launcher('Start.command', dist, executable=True)
+    copy_launcher('README_FIRST.txt', dist)
     copy_launcher('お読みください.txt', dist)
     if make_zip:
         make_zip_archive(dist)
