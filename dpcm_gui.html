@@ -1134,6 +1134,13 @@ async function init() {
 LANG = detectLang();
 applyI18n();
 init();
+
+// サーバー再起動時にブラウザが二重に開かないよう、タブが生きていることを定期通知する
+// （サーバー側は直近のpingがあると起動時のブラウザ自動起動をスキップする）
+setInterval(() => { fetch('/api/ping').catch(() => {}); }, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) fetch('/api/ping').catch(() => {});
+});
 </script>
 </body>
 </html>

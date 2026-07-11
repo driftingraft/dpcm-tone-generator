@@ -21,6 +21,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 import wave
 import webbrowser
 import zipfile
@@ -41,6 +42,30 @@ from dpcm_sunsoft import (
 )
 
 HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dpcm_gui.html')
+
+# ブラウザ自動起動のスキップ判定用マーカーファイル。
+# GUIページが定期的に/api/pingを送り、サーバーがこのファイルのmtimeを更新する。
+# 起動時にmtimeが新しければ「再起動直前までタブが開いていた」とみなし自動起動しない。
+_CLIENT_MARKER_PATH = None  # main()でポート込みのパスを設定
+_CLIENT_RECENT_WINDOW = 180  # 秒。ping間隔30秒＋バックグラウンドタブのタイマー抑制を考慮
+
+
+def _touch_client_marker():
+    if _CLIENT_MARKER_PATH is None:
+        return
+    try:
+        with open(_CLIENT_MARKER_PATH, 'a'):
+            pass
+        os.utime(_CLIENT_MARKER_PATH, None)
+    except OSError:
+        pass
+
+
+def _client_recently_active():
+    try:
+        return (time.time() - os.path.getmtime(_CLIENT_MARKER_PATH)) < _CLIENT_RECENT_WINDOW
+    except (OSError, TypeError):
+        return False
 
 
 # =============================================================================
@@ -763,6 +788,7 @@ class GuiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split('?', 1)[0]
         if path in ('/', '/index.html'):
+            _touch_client_marker()
             try:
                 with open(HTML_PATH, 'rb') as f:
                     body = f.read()
@@ -774,6 +800,9 @@ class GuiHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif path == '/api/ping':
+            _touch_client_marker()
+            self._send_json({'ok': True})
         elif path == '/api/rates':
             self._send_json(handle_rates())
         else:
@@ -801,7 +830,9 @@ class GuiHandler(BaseHTTPRequestHandler):
             self._send_json({'error': L(lang, 'e_server', e=e)}, 500)
 
     def log_message(self, fmt, *args):
-        # APIアクセスログは1行だけ簡潔に
+        # APIアクセスログは1行だけ簡潔に（定期pingはログに出さない）
+        if self.path == '/api/ping':
+            return
         sys.stderr.write(f"[GUI] {self.command} {self.path} - {args[1] if len(args) > 1 else ''}\n")
 
 
@@ -816,6 +847,10 @@ def main():
         print(f"エラー: GUIファイルが見つかりません: {HTML_PATH}", file=sys.stderr)
         sys.exit(1)
 
+    global _CLIENT_MARKER_PATH
+    _CLIENT_MARKER_PATH = os.path.join(
+        tempfile.gettempdir(), f'dpcm_gui_client_{args.port}.marker')
+
     server = ThreadingHTTPServer((args.host, args.port), GuiHandler)
     url = f"http://{args.host}:{args.port}/"
     print("=== NES dPCM Generator GUI ===")
@@ -823,7 +858,11 @@ def main():
     print("終了するには Ctrl+C を押してください")
 
     if not args.no_browser:
-        webbrowser.open(url)
+        if _client_recently_active():
+            print("直近までGUIが開かれていたため、ブラウザの自動起動をスキップしました")
+            print("（開いていたタブをそのまま利用できます。閉じた場合は上記URLを開いてください）")
+        else:
+            webbrowser.open(url)
 
     try:
         server.serve_forever()
