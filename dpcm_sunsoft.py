@@ -158,7 +158,7 @@ def find_minimum_sample_set(
         result = find_best_fit_params(
             freq,
             min_cycles=cycles,
-            max_cycles=max(cycles * 4, 64),
+            max_cycles=max(cycles * 4, 128),
             prefer_quality=not prefer_quality_samples,
             min_rate_index=15,  # サンソフトベース方式は最高レート
             max_cents_error=max_cents_error
@@ -210,7 +210,9 @@ def find_minimum_sample_set(
         if not best_base or len(best_coverage) == 0:
             # カバー不可能なノートが存在
             remaining = sorted(uncovered, key=note_to_semitone)
-            raise ValueError(f"カバーできないノート: {remaining}")
+            raise ValueError(
+                f"カバーできないノート: {remaining}"
+                "（許容誤差を大きくするか、対象音域を調整してください）")
 
         base_samples.append(best_base)
 
@@ -282,7 +284,7 @@ def generate_sunsoft_samples(
                 result = find_best_fit_params(
                     target_freq,
                     min_cycles=cycles,
-                    max_cycles=max(cycles * 4, 64),
+                    max_cycles=max(cycles * 4, 128),
                     prefer_quality=prefer_quality,
                     min_rate_index=15,  # 最高レートを使用
                     loop_match_reserve=loop_reserve,
@@ -294,7 +296,7 @@ def generate_sunsoft_samples(
                     result = find_best_fit_params(
                         target_freq,
                         min_cycles=cycles,
-                        max_cycles=max(cycles * 4, 64),
+                        max_cycles=max(cycles * 4, 128),
                         prefer_quality=prefer_quality,
                         min_rate_index=12,
                         loop_match_reserve=loop_reserve,
@@ -307,7 +309,7 @@ def generate_sunsoft_samples(
                     result = find_best_fit_params(
                         target_freq,
                         min_cycles=cycles,
-                        max_cycles=max(cycles * 4, 64),
+                        max_cycles=max(cycles * 4, 128),
                         prefer_quality=prefer_quality,
                         min_rate_index=12,
                         loop_match_reserve=loop_reserve,

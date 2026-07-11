@@ -197,6 +197,10 @@ _REASON_PREFIX = [
     ('ファイル書き込みエラー: ', 'File write error: '),
     ('カバーできないノート: ', 'Uncoverable notes: '),
 ]
+_REASON_SUFFIX = [
+    ('（許容誤差を大きくするか、対象音域を調整してください）',
+     ' (increase the tolerance or adjust the note range)'),
+]
 
 
 def localize_reason(lang: str, reason: str) -> str:
@@ -207,7 +211,10 @@ def localize_reason(lang: str, reason: str) -> str:
         return _REASON_EXACT[reason]
     for jp, en in _REASON_PREFIX:
         if reason.startswith(jp):
-            return en + reason[len(jp):]
+            rest = reason[len(jp):]
+            for js, es in _REASON_SUFFIX:
+                rest = rest.replace(js, es)
+            return en + rest
     m = re.match(r'^許容誤差(.+?)cents内で生成可能な基本サンプル候補がありません$', reason)
     if m:
         return f'No base-sample candidates can be generated within {m.group(1)} cents of tolerance'
