@@ -212,16 +212,17 @@ def generate_ppmck_defines(results: list, wave_type: str,
         lang: コメントの言語（'ja'|'en'、既定 'ja'）。GUIの英語表示用。
     """
     en = (lang == "en")
+    first_note = results[0]['note'] if results else ''
     if en:
         header = f"; === {wave_type} dPCM sample definitions ==="
         note_line = "; Note: the sample rate differs for each pitch"
-        example_hdr = "; Example (E channel):"
-        example = f"; E @DPCM{start_index} | c4  ; tone via loop playback"
+        example_hdr = "; Example (E channel): use the n command (n<num> plays @DPCM<num>)"
+        example = f"; E n{start_index}  ; {first_note} as a tone via loop playback"
     else:
         header = f"; === {wave_type}波 dPCMサンプル定義 ==="
         note_line = "; 注意: 各音階ごとにサンプルレートが異なります"
-        example_hdr = "; 使用例（Eチャンネル）:"
-        example = f"; E @DPCM{start_index} | c4  ; ループ再生でトーン"
+        example_hdr = "; 使用例（Eチャンネル）: nコマンドで指定（n<番号> で @DPCM<番号> を発音）"
+        example = f"; E n{start_index}  ; {first_note} をループ再生でトーン"
 
     lines = [header, note_line, ""]
 

@@ -119,8 +119,8 @@ _MSG = {
         'e_bad_request': 'リクエスト形式が不正です',
         'e_server': 'サーバーエラー: {e}',
         # ppmckコメント（単一生成の例）
-        'ppmck_loop': '; MMLでループ再生する場合:',
-        'ppmck_tone': '; トーンとして鳴らす',
+        'ppmck_loop': '; MMLでループ再生する場合（Eチャンネルは音名ではなくnコマンドで指定）:',
+        'ppmck_tone': '; @DPCM{idx}をトーンとして鳴らす',
     },
     'en': {
         'wt_hex': 'Custom HEX ({n} samples)',
@@ -145,8 +145,8 @@ _MSG = {
         'e_no_samples': 'No samples were generated ({detail})',
         'e_bad_request': 'Invalid request format',
         'e_server': 'Server error: {e}',
-        'ppmck_loop': '; To loop-play in MML:',
-        'ppmck_tone': '; play as a tone',
+        'ppmck_loop': '; To loop-play in MML (use the n command on the E channel, not note names):',
+        'ppmck_tone': '; play @DPCM{idx} as a tone',
     },
 }
 
@@ -444,7 +444,7 @@ def handle_generate(p: dict) -> dict:
     filename = (p.get('output_name') or '').strip() or 'output.dmc'
     ppmck = (f'@DPCM{dpcm_index} = {{ "{dpcm_path}{filename}", {rate_index}, 0, 0, 1 }}\n\n'
              f'{L(lang, "ppmck_loop")}\n'
-             f'E @DPCM{dpcm_index} | c   {L(lang, "ppmck_tone")}')
+             f'E n{dpcm_index}   {L(lang, "ppmck_tone", idx=dpcm_index)}')
 
     return {
         'info': {

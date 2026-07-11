@@ -208,10 +208,10 @@ Generated ppmck definition file example:
 ...
 ```
 
-In MML:
+In MML (on the E channel, specify the @DPCM number directly with the `n` command instead of note names like cdefgab):
 
 ```
-E @DPCM0 | c   ; Play dPCM as tone
+E n0   ; Play @DPCM0 as a tone (looped)
 ```
 
 ## Changelog

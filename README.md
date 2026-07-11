@@ -324,10 +324,10 @@ python dpcm_batch.py --wave saw --fit --dpcm-start-index 20 --dpcm-path "D:\musi
 ...
 ```
 
-MMLでの使用：
+MMLでの使用（Eチャンネルでは音名（cdefgab）ではなく、`n`コマンドで@DPCM番号を直接指定します）：
 
 ```
-E @DPCM0 | c   ; dPCMをトーンとして再生（ループ）
+E n0   ; @DPCM0をトーンとして再生（ループ）
 ```
 
 ## 更新履歴

@@ -516,6 +516,7 @@ def generate_sunsoft_defines(
 
     err_label = "error" if en else "誤差"
     dpcm_num = start_index
+    first_covered = None
     for note in target_notes:
         if note in note_mapping:
             base_note, rate_idx, error = note_mapping[note]
@@ -524,7 +525,18 @@ def generate_sunsoft_defines(
             if sample_info:
                 filepath = f"{dpcm_path}{sample_info['filename']}"
                 lines.append(f"@DPCM{dpcm_num} = {{ \"{filepath}\", {rate_idx}, 0, 0, 1 }}  ; {note} ({err_label}: {error:+.1f}cents)")
+                if first_covered is None:
+                    first_covered = note
                 dpcm_num += 1
+
+    if first_covered is not None:
+        lines.append("")
+        if en:
+            lines.append("; Example (E channel): use the n command (n<num> plays @DPCM<num>)")
+            lines.append(f"; E n{start_index}  ; {first_covered} as a tone via loop playback")
+        else:
+            lines.append("; 使用例（Eチャンネル）: nコマンドで指定（n<番号> で @DPCM<番号> を発音）")
+            lines.append(f"; E n{start_index}  ; {first_covered} をループ再生でトーン")
 
     return "\n".join(lines)
 

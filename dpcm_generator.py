@@ -1395,8 +1395,8 @@ def main():
     filepath = f"{args.dpcm_path}{args.output}"
     print(f'@DPCM{args.dpcm_index} = {{ "{filepath}", {rate_index}, 0, 0, 1 }}')
     print()
-    print("; MMLでループ再生する場合:")
-    print(f"E @DPCM{args.dpcm_index} | c   ; トーンとして鳴らす")
+    print("; MMLでループ再生する場合（Eチャンネルは音名ではなくnコマンドで指定）:")
+    print(f"E n{args.dpcm_index}   ; @DPCM{args.dpcm_index}をトーンとして鳴らす")
 
 
 if __name__ == "__main__":

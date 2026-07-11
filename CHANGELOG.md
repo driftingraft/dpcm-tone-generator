@@ -4,6 +4,12 @@
 バージョニングは [セマンティック バージョニング](https://semver.org/lang/ja/) に準拠します。
 (This changelog is written primarily in Japanese.)
 
+## [未リリース]
+
+### 修正
+- ppmck用のMML使用例を修正。Eチャンネル（DPCM）では音名（`c`等）ではなく `n` コマンドで@DPCM番号を直接指定する正しい書式（`E n0` 形式）に変更（CLI出力・定義ファイル・GUI表示・ドキュメント）
+- `dpcm_sunsoft.py` の定義ファイルにもEチャンネルの使用例を追加
+
 ## [1.0.0] - 2026-07-09
 
 初版リリース。
