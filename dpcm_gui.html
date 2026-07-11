@@ -80,6 +80,9 @@
     padding: 6px 8px; font-size: .9rem;
   }
   input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent2); }
+  .note-picker { display: flex; gap: 6px; }
+  .note-picker select:first-child { flex: 1.4; }
+  .note-picker select:last-child { flex: 1; }
   textarea { resize: vertical; min-height: 64px; }
   .hint { color: var(--muted); font-size: .78rem; margin-top: 2px; }
 
@@ -161,7 +164,7 @@
         <div class="row">
           <div>
             <label data-i18n="label_note">音名</label>
-            <select id="sg-note"></select>
+            <div class="note-picker"><select id="sg-note-name"></select><select id="sg-note-oct"></select></div>
           </div>
           <div>
             <label data-i18n="label_freq">周波数 (Hz) ※音名より優先</label>
@@ -210,11 +213,11 @@
         <div class="row">
           <div>
             <label data-i18n="label_startnote">開始ノート</label>
-            <select id="bt-start"></select>
+            <div class="note-picker"><select id="bt-start-name"></select><select id="bt-start-oct"></select></div>
           </div>
           <div>
             <label data-i18n="label_endnote">終了ノート</label>
-            <select id="bt-end"></select>
+            <div class="note-picker"><select id="bt-end-name"></select><select id="bt-end-oct"></select></div>
           </div>
         </div>
       </fieldset>
@@ -258,11 +261,11 @@
         <div class="row">
           <div>
             <label data-i18n="label_startnote">開始ノート</label>
-            <select id="ss-start"></select>
+            <div class="note-picker"><select id="ss-start-name"></select><select id="ss-start-oct"></select></div>
           </div>
           <div>
             <label data-i18n="label_endnote">終了ノート</label>
-            <select id="ss-end"></select>
+            <div class="note-picker"><select id="ss-end-name"></select><select id="ss-end-oct"></select></div>
           </div>
           <div>
             <label data-i18n="label_maxerror">許容誤差 (cents)</label>
@@ -659,17 +662,26 @@ function fillRateSelect(sel, withAuto) {
     sel.appendChild(opt);
   });
 }
-function fillNoteSelect(sel, defNote, lowOct, highOct) {
+function fillNotePicker(id, defNote, lowOct, highOct) {
   const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  for (let oct = lowOct; oct <= highOct; oct++) {
-    for (const n of names) {
-      const note = n + oct;
-      const opt = document.createElement('option');
-      opt.value = note; opt.textContent = note;
-      if (note === defNote) opt.selected = true;
-      sel.appendChild(opt);
-    }
+  const m = defNote.match(/^([A-G]#?)(\d+)$/);
+  const nameSel = $(id + '-name'), octSel = $(id + '-oct');
+  for (const n of names) {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    if (m && n === m[1]) opt.selected = true;
+    nameSel.appendChild(opt);
   }
+  for (let oct = lowOct; oct <= highOct; oct++) {
+    const opt = document.createElement('option');
+    opt.value = String(oct); opt.textContent = String(oct);
+    if (m && String(oct) === m[2]) opt.selected = true;
+    octSel.appendChild(opt);
+  }
+}
+
+function noteValue(id) {
+  return $(id + '-name').value + $(id + '-oct').value;
 }
 
 /* ---------------- パラメータ収集 ---------------- */
@@ -823,7 +835,7 @@ function drawWaveform(canvas, decoded, raw) {
 $('sg-wavesrc').innerHTML = waveSourceHTML('sg', false);
 $('sg-common').innerHTML = commonOptsHTML('sg', { cycles: 1 });
 setupWaveSource('sg');
-fillNoteSelect($('sg-note'), 'C3', 0, 7);
+fillNotePicker('sg-note', 'C3', 0, 7);
 
 $('sg-fit').addEventListener('change', () => {
   $('sg-rate').disabled = $('sg-fit').checked;
@@ -833,7 +845,7 @@ function defaultDmcName() {
   const src = document.querySelector('input[name=sg-src]:checked').value;
   const wave = src === 'wave' ? $('sg-wave').value : src;
   const freq = $('sg-freq').value.trim();
-  const noteStr = freq ? freq.replace('.', '_') + 'Hz' : $('sg-note').value.replace('#', '_s');
+  const noteStr = freq ? freq.replace('.', '_') + 'Hz' : noteValue('sg-note').replace('#', '_s');
   return `${wave}_${noteStr}.dmc`;
 }
 
@@ -841,7 +853,7 @@ let sgLast = null;
 $('sg-run').addEventListener('click', () => withBusy($('sg-run'), $('sg-error'), async () => {
   const outname = $('sg-outname').value.trim() || defaultDmcName();
   const params = Object.assign(srcParams('sg'), commonParams('sg'), {
-    note: $('sg-note').value,
+    note: noteValue('sg-note'),
     freq: numOrNull('sg-freq'),
     rate_index: $('sg-fit').checked ? null : numOrNull('sg-rate'),
     dpcm_index: numOrNull('sg-dpcmindex'),
@@ -904,13 +916,13 @@ function renderSingle(r, outname) {
 $('bt-wavesrc').innerHTML = waveSourceHTML('bt', true);
 $('bt-common').innerHTML = commonOptsHTML('bt', { cycles: 1 });
 setupWaveSource('bt');
-fillNoteSelect($('bt-start'), 'C2', 0, 7);
-fillNoteSelect($('bt-end'), 'F4', 0, 7);
+fillNotePicker('bt-start', 'C2', 0, 7);
+fillNotePicker('bt-end', 'F4', 0, 7);
 
 $('bt-run').addEventListener('click', () => withBusy($('bt-run'), $('bt-error'), async () => {
   const params = Object.assign(srcParams('bt'), commonParams('bt'), {
-    start: $('bt-start').value,
-    end: $('bt-end').value,
+    start: noteValue('bt-start'),
+    end: noteValue('bt-end'),
     dpcm_start_index: numOrNull('bt-startindex'),
     dpcm_path: $('bt-dpcmpath').value,
     include_preview: $('bt-incprev').checked,
@@ -969,13 +981,13 @@ function renderBatch(r) {
 $('ss-wavesrc').innerHTML = waveSourceHTML('ss', true);
 $('ss-common').innerHTML = commonOptsHTML('ss', { cycles: 8 });
 setupWaveSource('ss');
-fillNoteSelect($('ss-start'), 'C2', 0, 7);
-fillNoteSelect($('ss-end'), 'F4', 0, 7);
+fillNotePicker('ss-start', 'C2', 0, 7);
+fillNotePicker('ss-end', 'F4', 0, 7);
 
 function sunsoftPlanParams() {
   return {
-    start: $('ss-start').value,
-    end: $('ss-end').value,
+    start: noteValue('ss-start'),
+    end: noteValue('ss-end'),
     max_error: numOrNull('ss-maxerror'),
     prefer_quality: $('ss-preferquality').checked,
     size_priority: $('ss-sizepriority').checked,
