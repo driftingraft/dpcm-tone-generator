@@ -186,6 +186,7 @@ def generate_note_set(wave_type: str, output_dir: str, prefix: str = "", custom_
                 'size': len(dpcm_data),
                 'actual_freq': actual_freq,
                 'target_freq': target_freq,
+                'start_value': actual_start,
             })
 
             print(f"  {note}: {filename} (rate=${rate_index:X}, {len(dpcm_data)}bytes)")

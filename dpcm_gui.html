@@ -80,6 +80,7 @@
     padding: 6px 8px; font-size: .9rem;
   }
   input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent2); }
+  .scale-prev audio { display: block; width: 100%; max-width: 420px; margin: 4px 0 10px; }
   .note-picker { display: flex; gap: 6px; }
   .note-picker select:first-child { flex: 1.4; }
   .note-picker select:last-child { flex: 1; }
@@ -236,6 +237,15 @@
           </div>
         </div>
         <div class="checks">
+          <label><input type="checkbox" id="bt-scaleprev" checked> <span data-i18n="chk_scaleprev">スケールプレビュー（音階を順番に鳴らすWAV）を生成</span></label>
+        </div>
+        <div class="row">
+          <div>
+            <label data-i18n="label_scaledur">スケール各音の長さ (秒)</label>
+            <input type="number" id="bt-scaledur" value="0.5" step="0.1" min="0.1">
+          </div>
+        </div>
+        <div class="checks">
           <label><input type="checkbox" id="bt-incprev"> <span data-i18n="chk_incprev">プレビューWAVをZIP/保存先に含める</span></label>
         </div>
         <label data-i18n="label_outdir">サーバー側の保存先ディレクトリ（任意）</label>
@@ -297,7 +307,7 @@
         <label data-i18n="label_dpcmpath2">定義内のdmcパス</label>
         <input type="text" id="ss-dpcmpath" placeholder="">
         <div class="checks">
-          <label><input type="checkbox" id="ss-scaleprev" checked> <span data-i18n="chk_scaleprev">スケールプレビュー（全音階を順番に再生するWAV）を生成</span></label>
+          <label><input type="checkbox" id="ss-scaleprev" checked> <span data-i18n="chk_scaleprev">スケールプレビュー（音階を順番に鳴らすWAV）を生成</span></label>
         </div>
         <div class="row">
           <div>
@@ -357,7 +367,7 @@ const I18N = {
     chk_sizepriority: 'サイズ優先（対象範囲外のサンプルも使いサンプル数を最小化）',
     btn_analyze: '分析のみ実行', label_prefix: 'ファイル名プレフィックス',
     label_dpcmstart_scale: '@DPCM開始番号（音階部分）',
-    chk_scaleprev: 'スケールプレビュー（全音階を順番に再生するWAV）を生成',
+    chk_scaleprev: 'スケールプレビュー（音階を順番に鳴らすWAV）を生成',
     label_scaledur: 'スケール各音の長さ (秒)', btn_sunsoft: 'サンプルセットを生成する',
     ph_result_sunsoft: '「分析のみ実行」または「サンプルセットを生成する」を押してください',
     ph_loading: '読み込み中...',
@@ -403,7 +413,9 @@ const I18N = {
     r_base_notes: '基本サンプルノート', r_maxerror: '許容誤差',
     ok_sunsoft: '✔ 基本サンプル {n}個 生成（合計 {bytes} バイト / {kb} KB）— {start}〜{end} をカバー',
     warn_scale_fail: '⚠ スケールプレビュー生成失敗: {msg}',
-    sec_scale_preview: 'スケールプレビュー（全音階を順番に再生）', sec_base_samples: '基本サンプル',
+    sec_scale_preview: 'スケールプレビュー', sec_base_samples: '基本サンプル',
+    lbl_scale_chromatic: '全音階（半音を含む）',
+    lbl_scale_major: 'ドレミファソラシ（♯を除く）',
     th_sample_cycle: 'サンプル×周期',
     th_index: 'インデックス', th_samplerate: 'サンプルレート', th_fratio: '$F比（セント差）',
     hint_batch_default: 'バッチ生成のデフォルト対象音階: {notes}',
@@ -432,7 +444,7 @@ const I18N = {
     chk_sizepriority: 'Prefer size (use out-of-range samples to minimize count)',
     btn_analyze: 'Analyze only', label_prefix: 'Filename prefix',
     label_dpcmstart_scale: '@DPCM start number (notes)',
-    chk_scaleprev: 'Generate scale preview (WAV playing all notes in order)',
+    chk_scaleprev: 'Generate scale preview (WAV playing the notes in order)',
     label_scaledur: 'Duration per note (sec)', btn_sunsoft: 'Generate sample set',
     ph_result_sunsoft: 'Press "Analyze only" or "Generate sample set"',
     ph_loading: 'Loading...',
@@ -478,7 +490,9 @@ const I18N = {
     r_base_notes: 'Base sample notes', r_maxerror: 'Max error',
     ok_sunsoft: '✔ Generated {n} base samples (total {bytes} bytes / {kb} KB) — covers {start}–{end}',
     warn_scale_fail: '⚠ Scale preview failed: {msg}',
-    sec_scale_preview: 'Scale preview (all notes in sequence)', sec_base_samples: 'Base samples',
+    sec_scale_preview: 'Scale preview', sec_base_samples: 'Base samples',
+    lbl_scale_chromatic: 'Chromatic (all semitones)',
+    lbl_scale_major: 'Do-re-mi (naturals only, no sharps)',
     th_sample_cycle: 'Samples×cycles',
     th_index: 'Index', th_samplerate: 'Sample rate', th_fratio: '$F ratio (cents)',
     hint_batch_default: 'Default batch note range: {notes}',
@@ -926,11 +940,25 @@ $('bt-run').addEventListener('click', () => withBusy($('bt-run'), $('bt-error'),
     dpcm_start_index: numOrNull('bt-startindex'),
     dpcm_path: $('bt-dpcmpath').value,
     include_preview: $('bt-incprev').checked,
+    scale_preview: $('bt-scaleprev').checked,
+    scale_duration: numOrNull('bt-scaledur'),
     output_dir: $('bt-outdir').value,
   });
   const r = await api('/api/batch', params);
   renderBatch(r);
 }));
+
+function scalePreviewHTML(r) {
+  if (!r.scale_wav_base64 && !r.scale_major_wav_base64) return '';
+  return `
+    <h3 class="sec">${t('sec_scale_preview')}</h3>
+    <div class="scale-prev">
+      ${r.scale_wav_base64 ? `<div class="hint">${t('lbl_scale_chromatic')}</div>
+        <audio controls src="data:audio/wav;base64,${r.scale_wav_base64}"></audio>` : ''}
+      ${r.scale_major_wav_base64 ? `<div class="hint">${t('lbl_scale_major')}</div>
+        <audio controls src="data:audio/wav;base64,${r.scale_major_wav_base64}"></audio>` : ''}
+    </div>`;
+}
 
 function renderBatch(r) {
   const rows = r.results.map((it, i) => `
@@ -949,11 +977,13 @@ function renderBatch(r) {
     <div class="ok-box">${t('ok_batch', { start: esc(r.start), end: esc(r.end), n: r.results.length, bytes: r.total_size, kb: (r.total_size/1024).toFixed(1) })}</div>
     ${r.copied ? `<div class="ok-box">${t('ok_saved', { dir: esc(r.copied.dir), files: r.copied.files })}</div>` : ''}
     ${r.failures.length ? `<div class="warn-box">${t('warn_failures', { n: r.failures.length, list: r.failures.map(f => esc((f.note||'') + ' ' + f.reason)).join(' / ') })}</div>` : ''}
+    ${r.scale_error ? `<div class="warn-box">${t('warn_scale_fail', { msg: esc(r.scale_error) })}</div>` : ''}
     <div class="toolbar">
       <button class="btn small" id="bt-dl-zip">${t('btn_dl_zip')}</button>
       <button class="btn small secondary" id="bt-dl-def">⬇ ${esc(r.defines_name)}</button>
       <button class="btn small secondary" id="bt-copy-def">${t('btn_copy_def')}</button>
     </div>
+    ${scalePreviewHTML(r)}
     <div class="scrollbox">
       <table class="list">
         <thead><tr><th>${t('th_note')}</th><th>${t('th_file')}</th><th>${t('th_rate')}</th><th>${t('th_percycle')}</th><th>${t('th_size')}</th><th>${t('th_error_c')}</th><th>${t('th_play')}</th><th>${t('th_dl')}</th></tr></thead>
@@ -1072,9 +1102,7 @@ function renderSunsoftGenerate(r) {
       <button class="btn small secondary" id="ss-dl-def">⬇ ${esc(r.defines_name)}</button>
       <button class="btn small secondary" id="ss-copy-def">${t('btn_copy_def')}</button>
     </div>
-    ${r.scale_wav_base64 ? `
-      <h3 class="sec">${t('sec_scale_preview')}</h3>
-      <audio controls src="data:audio/wav;base64,${r.scale_wav_base64}"></audio>` : ''}
+    ${scalePreviewHTML(r)}
     <h3 class="sec">${t('sec_base_samples')}</h3>
     <div class="scrollbox">
       <table class="list">

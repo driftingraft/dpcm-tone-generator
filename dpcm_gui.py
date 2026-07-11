@@ -509,6 +509,40 @@ def handle_generate(p: dict) -> dict:
 # バッチ生成（dpcm_batch.py相当）
 # =============================================================================
 
+def _make_scale_previews(p, lang, tmpdir, target_notes, note_mapping,
+                         base_samples, name_prefix):
+    """スケールプレビューWAVを2種類（全音階／幹音のみ）生成してbase64で返す。
+
+    バッチ・サンソフト両タブで共用。幹音のみ版は♯を除いたノート列で
+    generate_scale_previewを呼び直すだけ（音楽初心者向けのドレミ確認用）。
+    """
+    out = {'scale_wav_base64': None, 'scale_major_wav_base64': None,
+           'scale_error': None}
+    if not p.get('scale_preview', True):
+        return out
+    duration = _float(p, 'scale_duration', 0.5)
+    auto_start = bool(p.get('auto_start'))
+    try:
+        path = generate_scale_preview(
+            target_notes, note_mapping, base_samples, tmpdir,
+            output_filename=f"{name_prefix}_scale.wav",
+            duration=duration, auto_start=auto_start)
+        out['scale_wav_base64'] = read_file_b64(path)
+    except ValueError as e:
+        out['scale_error'] = localize_reason(lang, str(e))
+    naturals = [n for n in target_notes if '#' not in n]
+    if naturals:
+        try:
+            path = generate_scale_preview(
+                naturals, note_mapping, base_samples, tmpdir,
+                output_filename=f"{name_prefix}_scale_major.wav",
+                duration=duration, auto_start=auto_start)
+            out['scale_major_wav_base64'] = read_file_b64(path)
+        except ValueError:
+            pass  # 全音階側が成功していれば幹音のみ版の失敗は表示しない
+    return out
+
+
 def handle_batch(p: dict) -> dict:
     lang = _get_lang(p)
     custom_waveform, wav_sample_rate = resolve_custom_waveform(p)
@@ -560,6 +594,12 @@ def handle_batch(p: dict) -> dict:
         with open(os.path.join(tmpdir, defines_name), 'w') as f:
             f.write(defines)
 
+        # スケールプレビュー（バッチは各ノートが自分自身のサンプルなので恒等マッピング）
+        scale = _make_scale_previews(
+            p, lang, tmpdir, [r['note'] for r in results],
+            {r['note']: (r['note'], r['rate_index'], 0.0) for r in results},
+            results, wave_type)
+
         out_results = []
         for r in results:
             path = os.path.join(tmpdir, r['filename'])
@@ -590,6 +630,7 @@ def handle_batch(p: dict) -> dict:
         'zip_base64': b64(zip_data),
         'total_size': sum(r['size'] for r in results),
         'copied': copied,
+        **scale,
     }
 
 
@@ -699,18 +740,9 @@ def handle_sunsoft_generate(p: dict) -> dict:
             f.write(defines)
 
         # スケールプレビュー
-        scale_wav_b64 = None
-        scale_error = None
-        if p.get('scale_preview', True):
-            try:
-                scale_path = generate_scale_preview(
-                    target_notes, note_mapping, samples, tmpdir,
-                    output_filename=f"{prefix}{wave_type}_scale.wav",
-                    duration=_float(p, 'scale_duration', 0.5),
-                    auto_start=bool(p.get('auto_start')))
-                scale_wav_b64 = read_file_b64(scale_path)
-            except ValueError as e:
-                scale_error = localize_reason(lang, str(e))
+        scale = _make_scale_previews(
+            p, lang, tmpdir, target_notes, note_mapping, samples,
+            f"{prefix}{wave_type}")
 
         out_samples = []
         base_note_to_idx = {}
@@ -747,10 +779,9 @@ def handle_sunsoft_generate(p: dict) -> dict:
         'defines': defines,
         'defines_name': defines_name,
         'zip_base64': b64(zip_data),
-        'scale_wav_base64': scale_wav_b64,
-        'scale_error': scale_error,
         'total_size': total_size,
         'copied': copied,
+        **scale,
     }
 
 
