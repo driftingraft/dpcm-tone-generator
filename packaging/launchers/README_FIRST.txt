@@ -1,5 +1,5 @@
 =====================================================
-  NES dPCM Generator  -  README (please read first)
+  dPCM Tone Generator  -  README (please read first)
 =====================================================
 
 A tool for creating dPCM samples (.dmc) for the Nintendo

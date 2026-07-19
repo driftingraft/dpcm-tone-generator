@@ -1,4 +1,4 @@
-# NES dPCM Generator
+# dPCM Tone Generator
 
 ファミコン（NES）のdPCMサンプルを生成するPythonツールです。
 

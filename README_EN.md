@@ -1,4 +1,4 @@
-# NES dPCM Generator
+# dPCM Tone Generator
 
 A Python tool for generating dPCM samples for the Nintendo Entertainment System (NES/Famicom).
 

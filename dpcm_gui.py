@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NES dPCM Generator - Web GUI
+dPCM Tone Generator - Web GUI
 標準ライブラリのみで動作するローカルWebサーバーを立ち上げ、
 ブラウザからdPCMサンプルの生成・プレビュー・ダウンロードを行えます。
 
@@ -875,7 +875,7 @@ class GuiHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='NES dPCM Generator - Web GUI')
+    parser = argparse.ArgumentParser(description='dPCM Tone Generator - Web GUI')
     parser.add_argument('--port', type=int, default=8765, help='ポート番号（デフォルト: 8765）')
     parser.add_argument('--host', default='127.0.0.1', help='バインドするホスト（デフォルト: 127.0.0.1）')
     parser.add_argument('--no-browser', action='store_true', help='ブラウザを自動で開かない')
@@ -891,7 +891,7 @@ def main():
 
     server = ThreadingHTTPServer((args.host, args.port), GuiHandler)
     url = f"http://{args.host}:{args.port}/"
-    print("=== NES dPCM Generator GUI ===")
+    print("=== dPCM Tone Generator GUI ===")
     print(f"起動しました: {url}")
     print("終了するには Ctrl+C を押してください")
 
