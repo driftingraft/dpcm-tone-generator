@@ -177,9 +177,9 @@ python dpcm_generator.py --wave saw --note C3 --loop-match --output output.dmc
 ### How Fit Mode Works
 
 1. Searches all 16 sample rates
-2. Tests 1-64 cycles for each rate
+2. Tests a range of cycle counts for each rate (1-64 in `dpcm_generator.py`, up to 128 for the Sunsoft-bass method)
 3. Finds combinations where total samples equals (8+128n)
-4. Selects optimal result within 15 cents error tolerance
+4. Selects the optimal result within the error tolerance (15 cents in `dpcm_generator.py`, 25 cents by default for the Sunsoft-bass method via `--max-error`)
 
 ### The --auto-start Effect
 
