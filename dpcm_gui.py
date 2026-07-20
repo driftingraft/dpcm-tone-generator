@@ -29,7 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from dpcm_generator import (
     generate_waveform, encode_dpcm, decode_dpcm, resample_waveform,
-    adjust_volume, mix_sub_octave, apply_lowpass_filter,
+    adjust_volume, mix_sub_octave, apply_lowpass_filter, prepare_cycle_waveform,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     freq_from_note, find_best_sample_rate, find_best_fit_params,
     find_nearest_valid_sample_count, generate_note_range,
@@ -422,6 +422,16 @@ def handle_generate(p: dict) -> dict:
         custom_waveform = apply_lowpass_filter(
             custom_waveform, wav_sample_rate, auto_cutoff, lowpass_order)
         lowpass_info = L(lang, 'lp_auto', cut=f"{auto_cutoff:.0f}", order=lowpass_order)
+    elif custom_waveform and source != 'wav':
+        # FDS/HEX入力: 明示指定のローパス、または縮小時の自動アンチエイリアス
+        custom_waveform, lp_info = prepare_cycle_waveform(
+            custom_waveform, num_samples, target_freq,
+            lowpass_cutoff=lowpass_cutoff, lowpass_order=lowpass_order,
+            no_auto_lowpass=no_auto_lowpass)
+        if lp_info:
+            key = 'lp_manual' if lowpass_cutoff else 'lp_auto'
+            cut = lp_info.replace('Hz(auto)', '').replace('Hz', '')
+            lowpass_info = L(lang, key, cut=cut, order=lowpass_order)
 
     # 波形生成（1周期分）
     if custom_waveform:

@@ -377,6 +377,7 @@ const I18N = {
     label_fds: 'FDS波形データ（スペース区切り 0〜63）', ph_fds: '例: 0 0 32 63 63 32 0 0 ...',
     label_wavfile: 'WAVファイル（1周期分の波形）', label_lowpass: 'ローパス カットオフ (Hz)', ph_auto: '(自動)',
     label_lporder: 'フィルタ次数', chk_noautolp: '自動ローパスフィルタを無効化',
+    hint_lowpass: '空欄なら自動。波形を縮小する際、折り返し（エイリアシング）による濁りを防ぐフィルタがかかります',
     label_wavename: '波形名（ファイル名に使用、カスタム波形時）',
     wave_saw: 'ノコギリ波 (saw)', wave_triangle: '三角波 (triangle)', wave_sine: 'サイン波 (sine)',
     wave_square: '矩形波 (square)', wave_pulse25: 'パルス波 25% (pulse25)', wave_pulse12: 'パルス波 12.5% (pulse12)',
@@ -455,6 +456,7 @@ const I18N = {
     label_fds: 'FDS waveform data (space-separated 0–63)', ph_fds: 'e.g. 0 0 32 63 63 32 0 0 ...',
     label_wavfile: 'WAV file (single-cycle waveform)', label_lowpass: 'Low-pass cutoff (Hz)', ph_auto: '(auto)',
     label_lporder: 'Filter order', chk_noautolp: 'Disable auto low-pass filter',
+    hint_lowpass: 'Leave blank for automatic. When the waveform is downsampled, a filter is applied to prevent aliasing artifacts',
     label_wavename: 'Waveform name (used in filename for custom waves)',
     wave_saw: 'Sawtooth (saw)', wave_triangle: 'Triangle (triangle)', wave_sine: 'Sine (sine)',
     wave_square: 'Square (square)', wave_pulse25: 'Pulse 25% (pulse25)', wave_pulse12: 'Pulse 12.5% (pulse12)',
@@ -582,6 +584,8 @@ function waveSourceHTML(prefix, withName) {
       <label data-i18n="label_wavfile"></label>
       <input type="file" id="${prefix}-wavfile" accept=".wav,audio/wav">
       <div class="hint" id="${prefix}-wavinfo"></div>
+    </div>
+    <div class="src-filter" data-src="hex fds wav" style="display:none">
       <div class="row">
         <div>
           <label data-i18n="label_lowpass"></label>
@@ -592,6 +596,7 @@ function waveSourceHTML(prefix, withName) {
           <input type="number" id="${prefix}-lporder" value="63" min="1">
         </div>
       </div>
+      <div class="hint" data-i18n="hint_lowpass"></div>
       <div class="checks">
         <label><input type="checkbox" id="${prefix}-noautolp"> <span data-i18n="chk_noautolp"></span></label>
       </div>
@@ -651,6 +656,10 @@ function setupWaveSource(prefix) {
     radio.addEventListener('change', () => {
       fs.querySelectorAll('.src-block').forEach(div => {
         div.style.display = (div.dataset.src === radio.value) ? '' : 'none';
+      });
+      // ローパス設定はカスタム波形（hex/fds/wav）でのみ表示
+      fs.querySelectorAll('.src-filter').forEach(div => {
+        div.style.display = div.dataset.src.split(' ').includes(radio.value) ? '' : 'none';
       });
     });
   });

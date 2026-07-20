@@ -288,6 +288,16 @@ python dpcm_generator.py --wave saw --note C3 --loop-match --output output.dmc
 3. Finds combinations where total samples equals (8+128n)
 4. Selects the optimal result within the error tolerance (15 cents in `dpcm_generator.py`, 25 cents by default for the Sunsoft-bass method via `--max-error`)
 
+### Automatic Anti-Aliasing Filter
+
+When a custom waveform (HEX/FDS/WAV) is downsampled to the output's samples-per-cycle, harmonics that can no longer be represented fold back onto lower harmonics (aliasing), adding muddiness that is not in the source waveform. To prevent this, a low-pass filter is applied automatically whenever the waveform is downsampled (passband up to 0.4 × the samples-per-cycle, in harmonic terms).
+
+- `--lowpass`: set the cutoff frequency (Hz) explicitly
+- `--lowpass-order`: filter order (default: 63)
+- `--no-auto-lowpass`: disable the automatic filtering
+
+It is not applied when upsampling (e.g. when quality-first mode raises the samples-per-cycle), since no folding occurs. Preset waveforms are unaffected because they involve no resampling.
+
 ### The --auto-start Effect
 
 dPCM normally starts at value 64 (center). If your waveform starts at 0, there's a "descent" period while catching up to the target, causing noise. `--auto-start` begins at the waveform's first value, avoiding this issue.
