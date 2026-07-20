@@ -1,10 +1,12 @@
 # dPCM Tone Generator
 
-A Python tool for generating dPCM samples for the Nintendo Entertainment System (NES/Famicom).
+A tool that turns any waveform into a **dPCM file that loops seamlessly** on the NES/Famicom.
+It lets the dPCM channel hold a pitched, sustained tone for as long as you want.
 
-Generate dPCM samples (.dmc) at specified pitches from arbitrary waveforms. Optimized for creating looping bass/lead sounds.
+## Quick start
 
-## Quick start (no coding needed)
+For what this tool is actually for, see **[About this tool](docs/concept.md)** (in Japanese).
+For everyday use, just follow these steps:
 
 1. Download the package for your OS (Windows / Mac) from **[Releases](https://github.com/driftingraft/dpcm-tone-generator/releases)**.
 2. Extract it and **double-click** `Start.bat` (Windows) or `Start.command` (Mac).
@@ -12,14 +14,18 @@ Generate dPCM samples (.dmc) at specified pitches from arbitrary waveforms. Opti
 
 For a detailed walkthrough, see the **[GUI manual](docs/gui_manual.md)** (in Japanese).
 
+---
+
 ## Features
 
 - **Multiple input formats**: Basic waveforms (saw/triangle/sine/square/pulse), FDS waveforms, HEX strings, WAV files
 - **Fit mode**: Automatically finds parameters that exactly match valid dPCM sample lengths (8+128n), eliminating padding noise
-- **Quality mode**: Prioritizes higher sample rates over smaller file size
+- **Three quality settings**: Size first / minimum rate index (balanced) / quality first
 - **Volume control**: Adjustable waveform amplitude
 - **Loop optimization**: Auto-start value, endpoint adjustment for seamless loops
+- **Sub-octave mixing**: Layers a sub-harmonic one octave below to reinforce the low end (cycle count is automatically made even to keep the loop boundary aligned)
 - **Batch generation**: Generate all notes in a configurable range (default: C2-F4) at once with ppmck definition files
+- **Sunsoft-bass method**: Covers every note with a minimal set of samples, greatly reducing memory usage
 - **Browser GUI**: All features accessible from a browser, with waveform display, audio preview, and ZIP download
 
 ## Requirements
@@ -30,8 +36,8 @@ For a detailed walkthrough, see the **[GUI manual](docs/gui_manual.md)** (in Jap
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/nes-dpcm-generator.git
-cd nes-dpcm-generator
+git clone https://github.com/driftingraft/dpcm-tone-generator.git
+cd dpcm-tone-generator
 ```
 
 ## Usage
