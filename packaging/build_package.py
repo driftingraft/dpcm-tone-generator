@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-NES dPCM Generator - 配布パッケージ組み立てスクリプト
+dPCM Tone Generator - 配布パッケージ組み立てスクリプト
 
 一般ユーザー（Pythonを持っていない人）向けの配布パッケージを作成します。
 標準ライブラリのみで動作し、Windows/Mac/Linux のどこからでも実行できます。
 
 作成されるもの（dist/ 以下）:
-  - NES-dPCM-Generator-Windows/   … 埋め込みPython同梱。Start.bat をダブルクリックで動く
-  - NES-dPCM-Generator-Mac/       … システムのpython3を使用。Start.command で動く
+  - dPCM-Tone-Generator-Windows/   … 埋め込みPython同梱。Start.bat をダブルクリックで動く
+  - dPCM-Tone-Generator-Mac/       … システムのpython3を使用。Start.command で動く
   （--zip を付けると、それぞれ .zip も作成）
 
 使い方:
@@ -46,7 +46,7 @@ APP_FILES = [
 DEFAULT_PYTHON_VERSION = '3.12.8'
 DEFAULT_ARCH = 'amd64'  # amd64 / win32 / arm64
 
-PKG_BASENAME = 'NES-dPCM-Generator'
+PKG_BASENAME = 'dPCM-Tone-Generator'
 
 
 def log(msg: str) -> None:
@@ -184,7 +184,7 @@ def build_mac(out_dir: Path, make_zip: bool) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description='NES dPCM Generator 配布パッケージ組み立て')
+    parser = argparse.ArgumentParser(description='dPCM Tone Generator 配布パッケージ組み立て')
     parser.add_argument('--target', choices=['windows', 'mac', 'all'], default='all',
                         help='作成する対象（デフォルト: all）')
     parser.add_argument('--out-dir', default=str(REPO_ROOT / 'dist'),
@@ -201,7 +201,7 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    log('=== NES dPCM Generator 配布パッケージ組み立て ===')
+    log('=== dPCM Tone Generator 配布パッケージ組み立て ===')
     log(f'出力先: {out_dir}\n')
 
     if args.target in ('windows', 'all'):

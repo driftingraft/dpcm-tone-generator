@@ -17,7 +17,7 @@ from dpcm_generator import (
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     note_to_semitone, semitone_to_note, generate_note_range,
     generate_preview, generate_raw_preview, decode_dpcm, apply_lowpass_filter,
-    mix_sub_octave,
+    prepare_cycle_waveform, mix_sub_octave,
     SAMPLE_RATES_NTSC,
     # バリデーション関数
     validate_note_name, validate_positive_int, validate_non_negative_int,
@@ -158,7 +158,7 @@ def find_minimum_sample_set(
         result = find_best_fit_params(
             freq,
             min_cycles=cycles,
-            max_cycles=max(cycles * 4, 64),
+            max_cycles=max(cycles * 4, 128),
             prefer_quality=not prefer_quality_samples,
             min_rate_index=15,  # サンソフトベース方式は最高レート
             max_cents_error=max_cents_error
@@ -210,7 +210,9 @@ def find_minimum_sample_set(
         if not best_base or len(best_coverage) == 0:
             # カバー不可能なノートが存在
             remaining = sorted(uncovered, key=note_to_semitone)
-            raise ValueError(f"カバーできないノート: {remaining}")
+            raise ValueError(
+                f"カバーできないノート: {remaining}"
+                "（許容誤差を大きくするか、対象音域を調整してください）")
 
         base_samples.append(best_base)
 
@@ -282,7 +284,7 @@ def generate_sunsoft_samples(
                 result = find_best_fit_params(
                     target_freq,
                     min_cycles=cycles,
-                    max_cycles=max(cycles * 4, 64),
+                    max_cycles=max(cycles * 4, 128),
                     prefer_quality=prefer_quality,
                     min_rate_index=15,  # 最高レートを使用
                     loop_match_reserve=loop_reserve,
@@ -294,7 +296,7 @@ def generate_sunsoft_samples(
                     result = find_best_fit_params(
                         target_freq,
                         min_cycles=cycles,
-                        max_cycles=max(cycles * 4, 64),
+                        max_cycles=max(cycles * 4, 128),
                         prefer_quality=prefer_quality,
                         min_rate_index=12,
                         loop_match_reserve=loop_reserve,
@@ -307,7 +309,7 @@ def generate_sunsoft_samples(
                     result = find_best_fit_params(
                         target_freq,
                         min_cycles=cycles,
-                        max_cycles=max(cycles * 4, 64),
+                        max_cycles=max(cycles * 4, 128),
                         prefer_quality=prefer_quality,
                         min_rate_index=12,
                         loop_match_reserve=loop_reserve,
@@ -336,9 +338,10 @@ def generate_sunsoft_samples(
             filename = f"{prefix}{wave_type}_{safe_note}.dmc"
             filepath = os.path.join(output_dir, filename)
 
-            # WAV入力時のローパスフィルタ処理
+            # ローパスフィルタ処理
             filtered_waveform = custom_waveform
             if custom_waveform and wav_sample_rate and not no_auto_lowpass:
+                # WAV入力: 読み込み時のサンプルレートを使って処理
                 if lowpass_cutoff:
                     # 明示的にカットオフ周波数が指定された場合
                     filtered_waveform = apply_lowpass_filter(
@@ -352,6 +355,13 @@ def generate_sunsoft_samples(
                         custom_waveform, wav_sample_rate,
                         auto_cutoff, lowpass_order
                     )
+            elif custom_waveform and not wav_sample_rate:
+                # FDS/HEX入力: 明示指定のローパス、または縮小時の自動アンチエイリアス
+                filtered_waveform, _ = prepare_cycle_waveform(
+                    custom_waveform, num_samples, target_freq,
+                    lowpass_cutoff=lowpass_cutoff, lowpass_order=lowpass_order,
+                    no_auto_lowpass=no_auto_lowpass
+                )
 
             # 波形生成（1周期分）
             if filtered_waveform:
@@ -516,6 +526,7 @@ def generate_sunsoft_defines(
 
     err_label = "error" if en else "誤差"
     dpcm_num = start_index
+    first_covered = None
     for note in target_notes:
         if note in note_mapping:
             base_note, rate_idx, error = note_mapping[note]
@@ -524,7 +535,18 @@ def generate_sunsoft_defines(
             if sample_info:
                 filepath = f"{dpcm_path}{sample_info['filename']}"
                 lines.append(f"@DPCM{dpcm_num} = {{ \"{filepath}\", {rate_idx}, 0, 0, 1 }}  ; {note} ({err_label}: {error:+.1f}cents)")
+                if first_covered is None:
+                    first_covered = note
                 dpcm_num += 1
+
+    if first_covered is not None:
+        lines.append("")
+        if en:
+            lines.append("; Example (E channel): use the n command (n<num> plays @DPCM<num>)")
+            lines.append(f"; E n{start_index}  ; {first_covered} as a tone via loop playback")
+        else:
+            lines.append("; 使用例（Eチャンネル）: nコマンドで指定（n<番号> で @DPCM<番号> を発音）")
+            lines.append(f"; E n{start_index}  ; {first_covered} をループ再生でトーン")
 
     return "\n".join(lines)
 

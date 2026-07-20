@@ -24,13 +24,13 @@ packaging/
 
 ```
 dist/
-├── NES-dPCM-Generator-Windows/   （+ .zip）
+├── dPCM-Tone-Generator-Windows/   （+ .zip）
 │   ├── Start.bat
 │   ├── README_FIRST.txt
 │   ├── お読みください.txt
 │   ├── app/                       … GUI本体一式
 │   └── python/                    … 埋め込みPython（同梱）
-└── NES-dPCM-Generator-Mac/       （+ .zip）
+└── dPCM-Tone-Generator-Mac/       （+ .zip）
     ├── Start.command
     ├── README_FIRST.txt
     ├── お読みください.txt

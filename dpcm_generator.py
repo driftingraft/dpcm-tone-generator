@@ -155,7 +155,8 @@ def validate_readable_file(value: str) -> str:
 # =============================================================================
 
 def apply_lowpass_filter(samples: list[float], sample_rate: int,
-                          cutoff_freq: float, order: int = 63) -> list[float]:
+                          cutoff_freq: float, order: int = 63,
+                          circular: bool = False) -> list[float]:
     """
     窓関数法によるFIRローパスフィルタを適用
 
@@ -164,6 +165,9 @@ def apply_lowpass_filter(samples: list[float], sample_rate: int,
         sample_rate: 入力サンプルレート（Hz）
         cutoff_freq: カットオフ周波数（Hz）
         order: フィルタ次数（奇数推奨、デフォルト: 63）
+        circular: Trueの場合、境界を循環（ラップアラウンド）として扱う。
+                  ループ再生する1周期波形ではミラーリングだと境界に
+                  段差が生じるため、こちらを使う
 
     Returns:
         フィルタ適用後の波形（0.0〜1.0にクリップ）
@@ -213,22 +217,126 @@ def apply_lowpass_filter(samples: list[float], sample_rate: int,
     for i in range(num_samples):
         acc = 0.0
         for j, coef in enumerate(coefficients):
-            # 境界処理：ミラーリング
             idx = i - half_order + j
-            if idx < 0:
-                idx = -idx
-            elif idx >= num_samples:
-                idx = 2 * num_samples - idx - 2
-            # インデックスが範囲外の場合は端の値を使用
-            if idx < 0:
-                idx = 0
-            elif idx >= num_samples:
-                idx = num_samples - 1
+            if circular:
+                # 境界処理：循環（1周期波形用）
+                idx %= num_samples
+            else:
+                # 境界処理：ミラーリング
+                if idx < 0:
+                    idx = -idx
+                elif idx >= num_samples:
+                    idx = 2 * num_samples - idx - 2
+                # インデックスが範囲外の場合は端の値を使用
+                if idx < 0:
+                    idx = 0
+                elif idx >= num_samples:
+                    idx = num_samples - 1
             acc += samples[idx] * coef
         # クリッピング
         result.append(max(0.0, min(1.0, acc)))
 
     return result
+
+
+# 縮小リサンプリング前に通過させる最大倍音次数の比率。
+# 出力の1周期サンプル数に対する割合で、WAV入力時の自動ローパス
+# （出力サンプルレートの0.4倍）と同じ基準に揃えてある。
+ANTIALIAS_CUTOFF_RATIO = 0.4
+
+
+def apply_cycle_lowpass(waveform: list[float], max_harmonic: float,
+                        order: int = 63) -> list[float]:
+    """
+    1周期波形に対し、指定倍音次数より上を除去するローパスを適用
+
+    ループ再生される1周期波形として扱うため、循環畳み込みで処理する。
+
+    Args:
+        waveform: 1周期分の波形（0.0〜1.0）
+        max_harmonic: 通過させる最大倍音次数（基音を1次とする）
+        order: フィルタ次数
+
+    Returns:
+        フィルタ適用後の波形（除去対象がなければ入力をそのまま返す）
+    """
+    if not waveform:
+        return waveform
+    src_len = len(waveform)
+    # 元波形が表現できる最大次数（ナイキスト）以上なら除去対象なし
+    if max_harmonic <= 0 or max_harmonic >= src_len / 2:
+        return waveform
+    # サンプルレートを「1周期あたりのサンプル数」、カットオフを「倍音次数」と
+    # みなすと比が一致するため、そのままapply_lowpass_filterに渡せる
+    return apply_lowpass_filter(waveform, src_len, max_harmonic, order,
+                                circular=True)
+
+
+def antialias_for_resample(waveform: list[float], target_length: int,
+                           order: int = 63) -> tuple[list[float], float]:
+    """
+    1周期波形を縮小リサンプリングする前に折り返し（エイリアシング）を防ぐ
+
+    target_lengthサンプルで表現できない高次倍音は、そのまま縮小すると
+    低い倍音へ折り返して濁りの原因になるため、事前に除去する。
+
+    Args:
+        waveform: 1周期分の波形
+        target_length: リサンプリング後のサンプル数
+        order: フィルタ次数
+
+    Returns:
+        (処理後の波形, 適用した最大倍音次数)。拡大時や不要時は (入力, 0.0)
+    """
+    if not waveform or target_length >= len(waveform):
+        return waveform, 0.0
+    max_harmonic = ANTIALIAS_CUTOFF_RATIO * target_length
+    filtered = apply_cycle_lowpass(waveform, max_harmonic, order)
+    if filtered is waveform:
+        return waveform, 0.0
+    return filtered, max_harmonic
+
+
+def prepare_cycle_waveform(waveform: list[float], target_length: int,
+                           target_freq: float, lowpass_cutoff: float = None,
+                           lowpass_order: int = 63,
+                           no_auto_lowpass: bool = False) -> tuple[list[float], str]:
+    """
+    カスタム1周期波形をリサンプリング前に整える（FDS/HEX入力用）
+
+    明示的なカットオフ指定があればそれを適用し、無ければ縮小時のみ
+    自動でアンチエイリアスフィルタをかける。WAV入力は読み込み時の
+    サンプルレートを使う別経路（自動ローパス）で処理される。
+
+    Args:
+        waveform: 1周期分の波形
+        target_length: リサンプリング後のサンプル数
+        target_freq: 目標周波数（Hz）。倍音次数との換算に使う
+        lowpass_cutoff: 明示指定のカットオフ周波数（Hz）。Noneなら自動
+        lowpass_order: フィルタ次数
+        no_auto_lowpass: Trueなら自動アンチエイリアスを行わない
+
+    Returns:
+        (処理後の波形, 適用内容の表示文字列)。未適用時は (入力, None)
+    """
+    if not waveform or target_freq <= 0:
+        return waveform, None
+
+    if lowpass_cutoff:
+        filtered = apply_cycle_lowpass(waveform, lowpass_cutoff / target_freq,
+                                       lowpass_order)
+        if filtered is waveform:
+            return waveform, None
+        return filtered, f"{lowpass_cutoff:.0f}Hz"
+
+    if no_auto_lowpass:
+        return waveform, None
+
+    filtered, max_harmonic = antialias_for_resample(waveform, target_length,
+                                                    lowpass_order)
+    if not max_harmonic:
+        return waveform, None
+    return filtered, f"{max_harmonic * target_freq:.0f}Hz(auto)"
 
 
 def load_wav_waveform(filepath: str) -> tuple[list[float], int]:
@@ -1109,14 +1217,14 @@ def main():
                         help='エンコード前プレビューのループ回数（デフォルト: --preview-loopsと同値）')
     parser.add_argument('--lowpass',
                         type=validate_positive_float,
-                        help='ローパスフィルタのカットオフ周波数（Hz）（WAV入力時のみ有効）')
+                        help='ローパスフィルタのカットオフ周波数（Hz）（WAV/FDS/HEX入力時に有効）')
     parser.add_argument('--lowpass-order',
                         type=validate_positive_int,
                         default=63,
                         help='ローパスフィルタの次数（デフォルト: 63）')
     parser.add_argument('--no-auto-lowpass',
                         action='store_true',
-                        help='自動ローパスフィルタを無効化（WAV入力時のみ有効）')
+                        help='自動ローパス／アンチエイリアスフィルタを無効化（WAV/FDS/HEX入力時に有効）')
     parser.add_argument('--sub-octave',
                         type=validate_non_negative_float,
                         default=0.0,
@@ -1261,6 +1369,15 @@ def main():
         )
         lowpass_applied = auto_cutoff
         wave_type_display += f" [LP:{auto_cutoff:.0f}Hz(auto)]"
+    elif custom_waveform and not args.wav:
+        # FDS/HEX入力: 明示指定のローパス、または縮小時の自動アンチエイリアス
+        custom_waveform, lp_info = prepare_cycle_waveform(
+            custom_waveform, num_samples, target_freq,
+            lowpass_cutoff=args.lowpass, lowpass_order=args.lowpass_order,
+            no_auto_lowpass=args.no_auto_lowpass
+        )
+        if lp_info:
+            wave_type_display += f" [LP:{lp_info}]"
 
     print(f"=== dPCM生成情報 ===")
     print(f"波形タイプ    : {wave_type_display}")
@@ -1395,8 +1512,8 @@ def main():
     filepath = f"{args.dpcm_path}{args.output}"
     print(f'@DPCM{args.dpcm_index} = {{ "{filepath}", {rate_index}, 0, 0, 1 }}')
     print()
-    print("; MMLでループ再生する場合:")
-    print(f"E @DPCM{args.dpcm_index} | c   ; トーンとして鳴らす")
+    print("; MMLでループ再生する場合（Eチャンネルは音名ではなくnコマンドで指定）:")
+    print(f"E n{args.dpcm_index}   ; @DPCM{args.dpcm_index}をトーンとして鳴らす")
 
 
 if __name__ == "__main__":

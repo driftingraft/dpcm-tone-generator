@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NES dPCM Generator - Web GUI
+dPCM Tone Generator - Web GUI
 標準ライブラリのみで動作するローカルWebサーバーを立ち上げ、
 ブラウザからdPCMサンプルの生成・プレビュー・ダウンロードを行えます。
 
@@ -21,6 +21,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 import wave
 import webbrowser
 import zipfile
@@ -28,7 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from dpcm_generator import (
     generate_waveform, encode_dpcm, decode_dpcm, resample_waveform,
-    adjust_volume, mix_sub_octave, apply_lowpass_filter,
+    adjust_volume, mix_sub_octave, apply_lowpass_filter, prepare_cycle_waveform,
     parse_hex_waveform, parse_fds_waveform, load_wav_waveform,
     freq_from_note, find_best_sample_rate, find_best_fit_params,
     find_nearest_valid_sample_count, generate_note_range,
@@ -41,6 +42,30 @@ from dpcm_sunsoft import (
 )
 
 HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dpcm_gui.html')
+
+# ブラウザ自動起動のスキップ判定用マーカーファイル。
+# GUIページが定期的に/api/pingを送り、サーバーがこのファイルのmtimeを更新する。
+# 起動時にmtimeが新しければ「再起動直前までタブが開いていた」とみなし自動起動しない。
+_CLIENT_MARKER_PATH = None  # main()でポート込みのパスを設定
+_CLIENT_RECENT_WINDOW = 180  # 秒。ping間隔30秒＋バックグラウンドタブのタイマー抑制を考慮
+
+
+def _touch_client_marker():
+    if _CLIENT_MARKER_PATH is None:
+        return
+    try:
+        with open(_CLIENT_MARKER_PATH, 'a'):
+            pass
+        os.utime(_CLIENT_MARKER_PATH, None)
+    except OSError:
+        pass
+
+
+def _client_recently_active():
+    try:
+        return (time.time() - os.path.getmtime(_CLIENT_MARKER_PATH)) < _CLIENT_RECENT_WINDOW
+    except (OSError, TypeError):
+        return False
 
 
 # =============================================================================
@@ -119,8 +144,8 @@ _MSG = {
         'e_bad_request': 'リクエスト形式が不正です',
         'e_server': 'サーバーエラー: {e}',
         # ppmckコメント（単一生成の例）
-        'ppmck_loop': '; MMLでループ再生する場合:',
-        'ppmck_tone': '; トーンとして鳴らす',
+        'ppmck_loop': '; MMLでループ再生する場合（Eチャンネルは音名ではなくnコマンドで指定）:',
+        'ppmck_tone': '; @DPCM{idx}をトーンとして鳴らす',
     },
     'en': {
         'wt_hex': 'Custom HEX ({n} samples)',
@@ -145,8 +170,8 @@ _MSG = {
         'e_no_samples': 'No samples were generated ({detail})',
         'e_bad_request': 'Invalid request format',
         'e_server': 'Server error: {e}',
-        'ppmck_loop': '; To loop-play in MML:',
-        'ppmck_tone': '; play as a tone',
+        'ppmck_loop': '; To loop-play in MML (use the n command on the E channel, not note names):',
+        'ppmck_tone': '; play @DPCM{idx} as a tone',
     },
 }
 
@@ -172,6 +197,10 @@ _REASON_PREFIX = [
     ('ファイル書き込みエラー: ', 'File write error: '),
     ('カバーできないノート: ', 'Uncoverable notes: '),
 ]
+_REASON_SUFFIX = [
+    ('（許容誤差を大きくするか、対象音域を調整してください）',
+     ' (increase the tolerance or adjust the note range)'),
+]
 
 
 def localize_reason(lang: str, reason: str) -> str:
@@ -182,7 +211,10 @@ def localize_reason(lang: str, reason: str) -> str:
         return _REASON_EXACT[reason]
     for jp, en in _REASON_PREFIX:
         if reason.startswith(jp):
-            return en + reason[len(jp):]
+            rest = reason[len(jp):]
+            for js, es in _REASON_SUFFIX:
+                rest = rest.replace(js, es)
+            return en + rest
     m = re.match(r'^許容誤差(.+?)cents内で生成可能な基本サンプル候補がありません$', reason)
     if m:
         return f'No base-sample candidates can be generated within {m.group(1)} cents of tolerance'
@@ -390,6 +422,16 @@ def handle_generate(p: dict) -> dict:
         custom_waveform = apply_lowpass_filter(
             custom_waveform, wav_sample_rate, auto_cutoff, lowpass_order)
         lowpass_info = L(lang, 'lp_auto', cut=f"{auto_cutoff:.0f}", order=lowpass_order)
+    elif custom_waveform and source != 'wav':
+        # FDS/HEX入力: 明示指定のローパス、または縮小時の自動アンチエイリアス
+        custom_waveform, lp_info = prepare_cycle_waveform(
+            custom_waveform, num_samples, target_freq,
+            lowpass_cutoff=lowpass_cutoff, lowpass_order=lowpass_order,
+            no_auto_lowpass=no_auto_lowpass)
+        if lp_info:
+            key = 'lp_manual' if lowpass_cutoff else 'lp_auto'
+            cut = lp_info.replace('Hz(auto)', '').replace('Hz', '')
+            lowpass_info = L(lang, key, cut=cut, order=lowpass_order)
 
     # 波形生成（1周期分）
     if custom_waveform:
@@ -444,7 +486,7 @@ def handle_generate(p: dict) -> dict:
     filename = (p.get('output_name') or '').strip() or 'output.dmc'
     ppmck = (f'@DPCM{dpcm_index} = {{ "{dpcm_path}{filename}", {rate_index}, 0, 0, 1 }}\n\n'
              f'{L(lang, "ppmck_loop")}\n'
-             f'E @DPCM{dpcm_index} | c   {L(lang, "ppmck_tone")}')
+             f'E n{dpcm_index}   {L(lang, "ppmck_tone", idx=dpcm_index)}')
 
     return {
         'info': {
@@ -483,6 +525,40 @@ def handle_generate(p: dict) -> dict:
 # =============================================================================
 # バッチ生成（dpcm_batch.py相当）
 # =============================================================================
+
+def _make_scale_previews(p, lang, tmpdir, target_notes, note_mapping,
+                         base_samples, name_prefix):
+    """スケールプレビューWAVを2種類（全音階／幹音のみ）生成してbase64で返す。
+
+    バッチ・サンソフト両タブで共用。幹音のみ版は♯を除いたノート列で
+    generate_scale_previewを呼び直すだけ（音楽初心者向けのドレミ確認用）。
+    """
+    out = {'scale_wav_base64': None, 'scale_major_wav_base64': None,
+           'scale_error': None}
+    if not p.get('scale_preview', True):
+        return out
+    duration = _float(p, 'scale_duration', 0.5)
+    auto_start = bool(p.get('auto_start'))
+    try:
+        path = generate_scale_preview(
+            target_notes, note_mapping, base_samples, tmpdir,
+            output_filename=f"{name_prefix}_scale.wav",
+            duration=duration, auto_start=auto_start)
+        out['scale_wav_base64'] = read_file_b64(path)
+    except ValueError as e:
+        out['scale_error'] = localize_reason(lang, str(e))
+    naturals = [n for n in target_notes if '#' not in n]
+    if naturals:
+        try:
+            path = generate_scale_preview(
+                naturals, note_mapping, base_samples, tmpdir,
+                output_filename=f"{name_prefix}_scale_major.wav",
+                duration=duration, auto_start=auto_start)
+            out['scale_major_wav_base64'] = read_file_b64(path)
+        except ValueError:
+            pass  # 全音階側が成功していれば幹音のみ版の失敗は表示しない
+    return out
+
 
 def handle_batch(p: dict) -> dict:
     lang = _get_lang(p)
@@ -535,6 +611,12 @@ def handle_batch(p: dict) -> dict:
         with open(os.path.join(tmpdir, defines_name), 'w') as f:
             f.write(defines)
 
+        # スケールプレビュー（バッチは各ノートが自分自身のサンプルなので恒等マッピング）
+        scale = _make_scale_previews(
+            p, lang, tmpdir, [r['note'] for r in results],
+            {r['note']: (r['note'], r['rate_index'], 0.0) for r in results},
+            results, wave_type)
+
         out_results = []
         for r in results:
             path = os.path.join(tmpdir, r['filename'])
@@ -565,6 +647,7 @@ def handle_batch(p: dict) -> dict:
         'zip_base64': b64(zip_data),
         'total_size': sum(r['size'] for r in results),
         'copied': copied,
+        **scale,
     }
 
 
@@ -674,18 +757,9 @@ def handle_sunsoft_generate(p: dict) -> dict:
             f.write(defines)
 
         # スケールプレビュー
-        scale_wav_b64 = None
-        scale_error = None
-        if p.get('scale_preview', True):
-            try:
-                scale_path = generate_scale_preview(
-                    target_notes, note_mapping, samples, tmpdir,
-                    output_filename=f"{prefix}{wave_type}_scale.wav",
-                    duration=_float(p, 'scale_duration', 0.5),
-                    auto_start=bool(p.get('auto_start')))
-                scale_wav_b64 = read_file_b64(scale_path)
-            except ValueError as e:
-                scale_error = localize_reason(lang, str(e))
+        scale = _make_scale_previews(
+            p, lang, tmpdir, target_notes, note_mapping, samples,
+            f"{prefix}{wave_type}")
 
         out_samples = []
         base_note_to_idx = {}
@@ -722,10 +796,9 @@ def handle_sunsoft_generate(p: dict) -> dict:
         'defines': defines,
         'defines_name': defines_name,
         'zip_base64': b64(zip_data),
-        'scale_wav_base64': scale_wav_b64,
-        'scale_error': scale_error,
         'total_size': total_size,
         'copied': copied,
+        **scale,
     }
 
 
@@ -763,6 +836,7 @@ class GuiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split('?', 1)[0]
         if path in ('/', '/index.html'):
+            _touch_client_marker()
             try:
                 with open(HTML_PATH, 'rb') as f:
                     body = f.read()
@@ -774,6 +848,9 @@ class GuiHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif path == '/api/ping':
+            _touch_client_marker()
+            self._send_json({'ok': True})
         elif path == '/api/rates':
             self._send_json(handle_rates())
         else:
@@ -801,12 +878,14 @@ class GuiHandler(BaseHTTPRequestHandler):
             self._send_json({'error': L(lang, 'e_server', e=e)}, 500)
 
     def log_message(self, fmt, *args):
-        # APIアクセスログは1行だけ簡潔に
+        # APIアクセスログは1行だけ簡潔に（定期pingはログに出さない）
+        if self.path == '/api/ping':
+            return
         sys.stderr.write(f"[GUI] {self.command} {self.path} - {args[1] if len(args) > 1 else ''}\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='NES dPCM Generator - Web GUI')
+    parser = argparse.ArgumentParser(description='dPCM Tone Generator - Web GUI')
     parser.add_argument('--port', type=int, default=8765, help='ポート番号（デフォルト: 8765）')
     parser.add_argument('--host', default='127.0.0.1', help='バインドするホスト（デフォルト: 127.0.0.1）')
     parser.add_argument('--no-browser', action='store_true', help='ブラウザを自動で開かない')
@@ -816,14 +895,22 @@ def main():
         print(f"エラー: GUIファイルが見つかりません: {HTML_PATH}", file=sys.stderr)
         sys.exit(1)
 
+    global _CLIENT_MARKER_PATH
+    _CLIENT_MARKER_PATH = os.path.join(
+        tempfile.gettempdir(), f'dpcm_gui_client_{args.port}.marker')
+
     server = ThreadingHTTPServer((args.host, args.port), GuiHandler)
     url = f"http://{args.host}:{args.port}/"
-    print("=== NES dPCM Generator GUI ===")
+    print("=== dPCM Tone Generator GUI ===")
     print(f"起動しました: {url}")
     print("終了するには Ctrl+C を押してください")
 
     if not args.no_browser:
-        webbrowser.open(url)
+        if _client_recently_active():
+            print("直近までGUIが開かれていたため、ブラウザの自動起動をスキップしました")
+            print("（開いていたタブをそのまま利用できます。閉じた場合は上記URLを開いてください）")
+        else:
+            webbrowser.open(url)
 
     try:
         server.serve_forever()
