@@ -399,7 +399,8 @@ const I18N = {
     r_lowpass: 'ローパスフィルタ', r_suboctave: 'サブオクターブ', r_options: 'オプション',
     sec_waveform: '波形', wave_blue: '青: dPCMデコード後', wave_yellow: '黄: エンコード前',
     sec_preview: 'プレビュー再生', label_dpcm_preview: 'dPCMプレビュー（実際の音）', label_raw_preview: 'エンコード前（理想波形）',
-    btn_dl_wav: 'プレビューWAV', sec_ppmck_example: 'ppmck定義例', btn_copy_def: '定義をコピー',
+    btn_dl_wav: 'dPCMプレビューWAV', btn_dl_raw_wav: 'エンコード前WAV',
+    sec_ppmck_example: 'ppmck定義例', btn_copy_def: '定義をコピー',
     ok_batch: '✔ {start}〜{end} の {n}ファイル生成（合計 {bytes} バイト / {kb} KB）',
     ok_saved: '💾 サーバー側に保存: {dir}（{files}ファイル）',
     warn_failures: '⚠ 失敗 {n}件: {list}',
@@ -476,7 +477,8 @@ const I18N = {
     r_lowpass: 'Low-pass filter', r_suboctave: 'Sub-octave', r_options: 'Options',
     sec_waveform: 'Waveform', wave_blue: 'blue: after dPCM decode', wave_yellow: 'yellow: before encode',
     sec_preview: 'Preview playback', label_dpcm_preview: 'dPCM preview (actual sound)', label_raw_preview: 'Before encoding (ideal waveform)',
-    btn_dl_wav: 'Preview WAV', sec_ppmck_example: 'ppmck example', btn_copy_def: 'Copy definition',
+    btn_dl_wav: 'dPCM preview WAV', btn_dl_raw_wav: 'Pre-encode WAV',
+    sec_ppmck_example: 'ppmck example', btn_copy_def: 'Copy definition',
     ok_batch: '✔ Generated {n} files for {start}–{end} (total {bytes} bytes / {kb} KB)',
     ok_saved: '💾 Saved on server: {dir} ({files} files)',
     warn_failures: '⚠ {n} failures: {list}',
@@ -913,6 +915,7 @@ function renderSingle(r, outname) {
     <div class="toolbar">
       <button class="btn small" id="sg-dl-dmc">⬇ ${esc(outname)}</button>
       <button class="btn small secondary" id="sg-dl-wav">⬇ ${t('btn_dl_wav')}</button>
+      <button class="btn small secondary" id="sg-dl-raw-wav">⬇ ${t('btn_dl_raw_wav')}</button>
     </div>
     <h3 class="sec">${t('sec_ppmck_example')}</h3>
     <pre class="code" id="sg-ppmck">${esc(ppmck)}</pre>
@@ -922,6 +925,8 @@ function renderSingle(r, outname) {
   $('sg-dl-dmc').addEventListener('click', () => downloadB64(outname, r.dmc_base64));
   $('sg-dl-wav').addEventListener('click', () =>
     downloadB64(outname.replace(/\.dmc$/i, '') + '.wav', r.preview_wav_base64, 'audio/wav'));
+  $('sg-dl-raw-wav').addEventListener('click', () =>
+    downloadB64(outname.replace(/\.dmc$/i, '') + '_raw.wav', r.raw_wav_base64, 'audio/wav'));
   $('sg-copy').addEventListener('click', e => copyText(ppmck, e.target));
   redraws.single = () => renderSingle(r, outname);
 }
