@@ -288,23 +288,22 @@ Sunsoft形式のdPCMベースと同様の方式で、実際に使用する**dPCM
 
 #### 曲全体
 
-niiru.mp4
+https://github.com/user-attachments/assets/079e41ad-70a7-42ea-bfc0-ab27355f782b
 
 #### dPCMチャンネル抜き
 
-niiru_wo.mp4
+https://github.com/user-attachments/assets/e038e2b5-5521-4453-b153-5db55c2c3b45
 
 #### dPCMチャンネルのみ
 
-niiru_dpcm.mp4
-
+https://github.com/user-attachments/assets/4e696e7e-d5c9-47d7-b201-3ae79450eb0e
 
 ### 少女幻葬
 
 もう少し実用的な例。拡張音源不使用。
 dPCMドラムからdPCMトーンへ切り替えて使用している部分の前後を抜粋。
 
-genso_sample.mp4
+https://github.com/user-attachments/assets/44fede7c-106a-4fbf-8990-0caab5150091
 
 なお、この楽曲のフル版は、東方Project合同Chiptuneアレンジアルバム **[「幻想郷レトロカーニバル」](https://yomogi-farm.sakura.ne.jp/GRC/)** に Disc2 Tr.13 として収録されています！（自然な宣伝）
 
